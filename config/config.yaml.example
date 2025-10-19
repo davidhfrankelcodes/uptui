@@ -1,0 +1,13 @@
+# uptui example configuration
+
+db:
+  path: ./uptui.db
+  retention_days: 30
+
+smtp:
+  server: smtp.example.org
+  port: 587
+  username: null
+  password: null
+  from: uptui@example.org
+  rate_limit_seconds: 3600

@@ -28,3 +28,6 @@
 # Rust specific #
 ##################
 /Cargo.toml.orig
+
+# Notes
+/notes.txt
