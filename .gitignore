@@ -1,0 +1,30 @@
+# Compiled source #
+###################
+/target/
+
+# Unofficial binary packages #
+##############################
+/Cargo.lock
+
+# Logs #
+########
+*.log
+
+# Configuration #
+#################
+*.rs.bk
+
+# IDE files #
+##############
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# macOS files #
+################
+.DS_Store
+
+# Rust specific #
+##################
+/Cargo.toml.orig
