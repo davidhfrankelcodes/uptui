@@ -6,5 +6,6 @@ pub mod daemon;
 pub mod tui;
 pub mod monitor;
 pub mod data;
+pub mod storage;
 
 pub use crate::config::Config;
