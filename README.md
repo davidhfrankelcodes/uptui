@@ -30,6 +30,33 @@ cargo run -- daemon
 cargo run -- tui
 ```
 
+CLI: top-level help
+
+For quick reference, here's the current top-level CLI help (what you'll see from the built binary):
+
+```text
+david@vbox-zorin  ~/Git/uptui ⎇ main 
+$ ./target/debug/uptui --help
+uptui CLI
+
+Usage: uptui [OPTIONS] [COMMAND]
+
+Commands:
+	init     Initialize configuration
+	daemon   Run the daemon
+	tui      Launch TUI
+	check    Run a one-shot check
+	monitor  Manage monitors
+	help     Print this message or the help of the given subcommand(s)
+
+Options:
+			--db <DB>  Path to the database file
+	-h, --help     Print help
+	-V, --version  Print version
+ david@vbox-zorin  ~/Git/uptui ⎇ main 
+$ 
+```
+
 What this scaffold contains
 
 - basic CLI wiring using clap
