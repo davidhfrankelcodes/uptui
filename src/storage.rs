@@ -30,6 +30,7 @@ pub struct Alert {
     pub message: String,
     pub created_at: DateTime<Utc>,
     pub sent: bool,
+    pub sent_at: Option<DateTime<Utc>>,
 }
 
 impl Db {
@@ -60,7 +61,8 @@ impl Db {
                 monitor_id TEXT NOT NULL,
                 message TEXT NOT NULL,
                 created_at TEXT NOT NULL,
-                sent INTEGER NOT NULL DEFAULT 0
+                sent INTEGER NOT NULL DEFAULT 0,
+                sent_at TEXT
             );
             COMMIT;",
         )?;
@@ -117,10 +119,33 @@ impl Db {
         Ok(self.conn.last_insert_rowid())
     }
 
+    pub fn mark_alert_sent(&self, alert_id: i64, sent_at: DateTime<Utc>) -> anyhow::Result<()> {
+        self.conn.execute(
+            "UPDATE alerts SET sent = 1, sent_at = ?1 WHERE id = ?2",
+            params![sent_at.to_rfc3339(), alert_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_last_sent_time(&self, monitor_id: &str) -> anyhow::Result<Option<DateTime<Utc>>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT sent_at FROM alerts WHERE monitor_id = ?1 AND sent = 1 AND sent_at IS NOT NULL ORDER BY sent_at DESC LIMIT 1",
+        )?;
+        let mut rows = stmt.query_map([monitor_id], |r| Ok::<_, rusqlite::Error>(r.get::<_, Option<String>>(0)?))?;
+        if let Some(r) = rows.next() {
+            let s: Option<String> = r?;
+            if let Some(ts) = s {
+                let dt = DateTime::parse_from_rfc3339(&ts).map(|d| d.with_timezone(&Utc)).unwrap();
+                return Ok(Some(dt));
+            }
+        }
+        Ok(None)
+    }
+
     pub fn fetch_alerts(&self, monitor_id: Option<&str>) -> anyhow::Result<Vec<Alert>> {
         let mut out = Vec::new();
         if let Some(mid) = monitor_id {
-            let mut stmt = self.conn.prepare("SELECT id, monitor_id, message, created_at, sent FROM alerts WHERE monitor_id = ?1 ORDER BY id DESC")?;
+            let mut stmt = self.conn.prepare("SELECT id, monitor_id, message, created_at, sent, sent_at FROM alerts WHERE monitor_id = ?1 ORDER BY id DESC")?;
             let rows = stmt.query_map([mid], |r| {
                 let ts: String = r.get(3)?;
                 let dt = DateTime::parse_from_rfc3339(&ts).map(|d| d.with_timezone(&Utc)).unwrap();
@@ -130,13 +155,14 @@ impl Db {
                     message: r.get(2)?,
                     created_at: dt,
                     sent: r.get::<_, i32>(4)? != 0,
+                    sent_at: r.get::<_, Option<String>>(5)?.map(|s| DateTime::parse_from_rfc3339(&s).map(|d| d.with_timezone(&Utc)).unwrap()),
                 })
             })?;
             for r in rows {
                 out.push(r?);
             }
         } else {
-            let mut stmt = self.conn.prepare("SELECT id, monitor_id, message, created_at, sent FROM alerts ORDER BY id DESC")?;
+            let mut stmt = self.conn.prepare("SELECT id, monitor_id, message, created_at, sent, sent_at FROM alerts ORDER BY id DESC")?;
             let rows = stmt.query_map([], |r| {
                 let ts: String = r.get(3)?;
                 let dt = DateTime::parse_from_rfc3339(&ts).map(|d| d.with_timezone(&Utc)).unwrap();
@@ -146,6 +172,7 @@ impl Db {
                     message: r.get(2)?,
                     created_at: dt,
                     sent: r.get::<_, i32>(4)? != 0,
+                    sent_at: r.get::<_, Option<String>>(5)?.map(|s| DateTime::parse_from_rfc3339(&s).map(|d| d.with_timezone(&Utc)).unwrap()),
                 })
             })?;
             for r in rows {
