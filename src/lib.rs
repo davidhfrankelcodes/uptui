@@ -8,5 +8,6 @@ pub mod monitor;
 pub mod data;
 pub mod storage;
 pub mod alert;
+pub mod smtp;
 
 pub use crate::config::Config;

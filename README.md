@@ -40,3 +40,14 @@ Next steps
 - implement check runners and scheduler
 - implement alert queue and SMTP sending with rate-limiting
 - implement TUI with crossterm/tui-rs
+
+Work in progress
+
+- SMTP alerting: added `src/alert.rs` and `src/smtp.rs` with a pluggable `Sender` trait and a stub `SmtpSender`.
+
+Running alerting tests:
+
+```bash
+cargo test --test alerting -- --nocapture
+```
+
