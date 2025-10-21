@@ -27,6 +27,30 @@ async fn main() -> anyhow::Result<()> {
         Some(uptui::cli::Commands::Check { target: _ }) => {
             println!("one-shot check (not implemented)");
         }
+        Some(uptui::cli::Commands::Monitor { sub }) => {
+            let db_path = cli.db.clone().unwrap_or_else(|| "uptui.db".to_string());
+            let db = uptui::storage::Db::open(&db_path).context("open db")?;
+            match sub {
+                uptui::cli::MonitorCmd::Add { id, name, target } => {
+                    db.insert_monitor(id, name, target)?;
+                    println!("monitor {} added", id);
+                }
+                uptui::cli::MonitorCmd::List => {
+                    let mons = db.list_monitors()?;
+                    for m in mons {
+                        println!("{}\t{}\t{}", m.id, m.name, m.target);
+                    }
+                }
+                uptui::cli::MonitorCmd::Remove { id } => {
+                    let n = db.delete_monitor(id)?;
+                    if n > 0 {
+                        println!("deleted monitor {}", id);
+                    } else {
+                        println!("monitor {} not found", id);
+                    }
+                }
+            }
+        }
         None => {
             println!("uptui: no command given, run --help for usage");
         }

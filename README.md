@@ -53,3 +53,35 @@ Running alerting tests:
 cargo test --test alerting -- --nocapture
 ```
 
+Recent changes
+
+- CLI monitor management: added a global `--db` option and `monitor` subcommands (`add`, `list`, `remove`).
+
+	Examples:
+
+	```bash
+	# add a monitor into a temporary DB path
+	cargo run -- --db ./uptui.db monitor add m1 "My monitor" http://example.local
+
+	# list monitors
+	cargo run -- --db ./uptui.db monitor list
+
+	# remove monitor
+	cargo run -- --db ./uptui.db monitor remove m1
+	```
+
+- Tests added to cover the new features (run them individually):
+
+	```bash
+	cargo test --test cli_monitors -- --nocapture
+	cargo test --test smtp_stub -- --nocapture
+	cargo test --test daemon_cycle -- --nocapture
+	cargo test --test storage_checks -- --nocapture
+	```
+
+Next up
+
+- Implement a real SMTP sender (e.g. `lettre`) behind a feature flag and add integration tests against a fake SMTP server.
+- Convert check runners to async worker pool and add scheduling for periodic checks.
+
+

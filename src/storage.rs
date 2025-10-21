@@ -97,6 +97,27 @@ impl Db {
         Ok(out)
     }
 
+    pub fn get_monitor(&self, id: &str) -> anyhow::Result<Option<MonitorRecord>> {
+        let mut stmt = self.conn.prepare("SELECT id, name, target FROM monitors WHERE id = ?1")?;
+        let mut rows = stmt.query_map([id], |r| {
+            Ok(MonitorRecord {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                target: r.get(2)?,
+            })
+        })?;
+        if let Some(r) = rows.next() {
+            Ok(Some(r?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn delete_monitor(&self, id: &str) -> anyhow::Result<usize> {
+        let n = self.conn.execute("DELETE FROM monitors WHERE id = ?1", params![id])?;
+        Ok(n)
+    }
+
     pub fn insert_result(
         &self,
         monitor_id: &str,
