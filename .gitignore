@@ -29,5 +29,8 @@
 ##################
 /Cargo.toml.orig
 
+# uptui
+*.db
+
 # Notes
 /notes.txt
