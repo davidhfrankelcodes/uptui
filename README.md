@@ -84,4 +84,69 @@ Next up
 - Implement a real SMTP sender (e.g. `lettre`) behind a feature flag and add integration tests against a fake SMTP server.
 - Convert check runners to async worker pool and add scheduling for periodic checks.
 
+Roadmap & Checklist
+
+Below is a living checklist of tasks and milestones to enhance uptui. Pick an item, mark it done in your editor or here, and I can implement it.
+
+Core
+- [ ] Storage: migrate to a robust schema and add migrations (consider `sqlx`/`barrel` or simple migration scripts).
+- [x] Basic storage (sqlite) implemented (monitors, results, alerts).
+- [ ] Data rotation: background retention job and configurable retention per DB.
+
+Checks & Scheduler
+- [x] One-shot HTTP check runner (blocking) implemented.
+- [ ] Async check runners + worker pool (Tokio) with configurable concurrency.
+- [ ] Scheduling: interval-based scheduler for monitors (per-monitor interval).
+- [ ] Check types: add TCP connect and ICMP (or TCP fallback) checks.
+
+Alerting
+- [x] Alert queue and DB-backed alerts table implemented.
+- [x] Pluggable alert `Sender` trait and SMTP stub implemented.
+- [ ] Real SMTP sender using `lettre` behind a feature flag.
+- [ ] Rate-limiting and cooldown per-monitor (configurable via YAML). Already supported in dispatch logic; wire to config.
+- [ ] Alert deduplication: avoid repeated notifications for same ongoing incident.
+- [ ] Alert delivery confirmation and retry/backoff for transient SMTP failures.
+
+CLI & TUI
+- [x] CLI basics + `monitor add/list/remove` implemented.
+- [ ] CLI: `monitor results <id>`, `alert list`, `alert resend` commands.
+- [ ] TUI: interactive monitor list, results view, alert management (use `tui` + `crossterm`).
+
+Daemon & Ops
+- [x] `run_one_cycle` to run checks and enqueue alerts implemented.
+- [ ] Daemon loop: periodic scheduler, graceful shutdown, metrics endpoint.
+- [ ] Systemd service example and packaging (deb/rpm) examples.
+
+Testing & CI
+- [x] Unit + integration tests for storage, checks, CLI exist.
+- [ ] Add CI (GitHub Actions) to run cargo test on push and PRs.
+- [ ] Add fuzz/integration tests for HTTP/TCP check types.
+- [ ] Add tests for SMTP `lettre` integration using a fake SMTP server or test harness.
+
+Docs & UX
+- [ ] Expand README with configuration reference and examples.
+- [ ] Add example `config.yaml` for common setups (local, docker, production).
+- [ ] Add CHANGELOG and CONTRIBUTING guidelines.
+
+Security & Ops notes
+- Use environment variables or an encrypted secrets store for SMTP credentials (do NOT commit secrets).
+- Consider rate limits and queuing to avoid SMTP provider rate throttling.
+
+Suggested short-term milestones (2-week sprints)
+- Sprint 1: Implement async check runners + scheduler; add `monitor results` CLI command. (High priority)
+- Sprint 2: Implement `lettre` SMTP sender behind feature flag + tests; wire alert dispatch into daemon loop. (High priority)
+- Sprint 3: Build a minimal TUI view and add CI + packaging. (Medium priority)
+
+How to run tests
+
+```bash
+# run all tests
+cargo test -- --nocapture
+
+# run a single integration test
+cargo test --test cli_monitors -- --nocapture
+```
+
+If you want, I can start right away on any checklist item and add corresponding tests and documentation. Reply with the task number or name and I'll mark it in the todo list and begin. 
+
 
