@@ -1,3 +1,5 @@
+## WARNING: This is a work in progres...
+
 # uptui
 
 uptui is a TUI for uptime checks and monitoring.
