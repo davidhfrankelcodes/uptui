@@ -21,6 +21,7 @@ pub struct MonitorRecord {
     pub id: String,
     pub name: String,
     pub target: String,
+    pub recipients: Option<String>,
 }
 
 #[derive(Debug)]
@@ -47,7 +48,8 @@ impl Db {
             CREATE TABLE IF NOT EXISTS monitors (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
-                target TEXT NOT NULL
+                target TEXT NOT NULL,
+                recipients TEXT
             );
             CREATE TABLE IF NOT EXISTS results (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -72,21 +74,30 @@ impl Db {
     pub fn insert_monitor(&self, id: &str, name: &str, target: &str) -> anyhow::Result<()> {
         self.conn
             .execute(
-                "INSERT OR REPLACE INTO monitors (id, name, target) VALUES (?1, ?2, ?3)",
+                "INSERT OR REPLACE INTO monitors (id, name, target, recipients) VALUES (?1, ?2, ?3, COALESCE((SELECT recipients FROM monitors WHERE id = ?1), NULL))",
                 params![id, name, target],
             )?;
+        Ok(())
+    }
+
+    pub fn set_monitor_recipients(&self, id: &str, recipients: Option<&str>) -> anyhow::Result<()> {
+        self.conn.execute(
+            "UPDATE monitors SET recipients = ?1 WHERE id = ?2",
+            params![recipients, id],
+        )?;
         Ok(())
     }
 
     pub fn list_monitors(&self) -> anyhow::Result<Vec<MonitorRecord>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, name, target FROM monitors ORDER BY id")?;
+            .prepare("SELECT id, name, target, recipients FROM monitors ORDER BY id")?;
         let rows = stmt.query_map([], |r| {
             Ok(MonitorRecord {
                 id: r.get(0)?,
                 name: r.get(1)?,
                 target: r.get(2)?,
+                recipients: r.get(3)?,
             })
         })?;
 
@@ -98,12 +109,13 @@ impl Db {
     }
 
     pub fn get_monitor(&self, id: &str) -> anyhow::Result<Option<MonitorRecord>> {
-        let mut stmt = self.conn.prepare("SELECT id, name, target FROM monitors WHERE id = ?1")?;
+        let mut stmt = self.conn.prepare("SELECT id, name, target, recipients FROM monitors WHERE id = ?1")?;
         let mut rows = stmt.query_map([id], |r| {
             Ok(MonitorRecord {
                 id: r.get(0)?,
                 name: r.get(1)?,
                 target: r.get(2)?,
+                recipients: r.get(3)?,
             })
         })?;
         if let Some(r) = rows.next() {

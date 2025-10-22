@@ -89,4 +89,10 @@ impl crate::alert::Sender for SmtpSenderL {
         self.send_email_blocking(&to, &subject, message)?;
         Ok(())
     }
+
+    fn send_to(&self, to: &str, message: &str) -> anyhow::Result<()> {
+        let subject = format!("uptui alert");
+        self.send_email_blocking(to, &subject, message)?;
+        Ok(())
+    }
 }

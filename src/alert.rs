@@ -4,6 +4,12 @@ use chrono::{Duration, Utc};
 pub trait Sender: Send + Sync {
     /// send an alert; return Ok(()) on success
     fn send(&self, monitor_id: &str, message: &str) -> anyhow::Result<()>;
+
+    /// send an alert to a specific recipient (email address). Default falls back to `send`.
+    fn send_to(&self, to: &str, message: &str) -> anyhow::Result<()> {
+        // default behaviour delegates to `send` using the recipient as monitor id
+        self.send(to, message)
+    }
 }
 
 /// Dispatch pending alerts, honoring rate_limit_seconds per monitor if provided.
@@ -27,10 +33,25 @@ pub fn dispatch_pending_alerts(sender: &dyn Sender, db_path: &str, rate_limit_se
             }
         }
 
-        // attempt send
-        if let Err(_e) = sender.send(&a.monitor_id, &a.message) {
-            // keep alert unsent on failure
-            continue;
+        // attempt send: prefer per-monitor recipients when available
+        let mut sent_ok = false;
+        if let Ok(Some(m)) = db.get_monitor(&a.monitor_id) {
+            if let Some(recs) = m.recipients {
+                // comma-separated list of recipients
+                let parts = recs.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect::<Vec<_>>();
+                for r in parts {
+                    if sender.send_to(r, &a.message).is_ok() {
+                        sent_ok = true;
+                    }
+                }
+            }
+        }
+
+        if !sent_ok {
+            if let Err(_e) = sender.send(&a.monitor_id, &a.message) {
+                // keep alert unsent on failure
+                continue;
+            }
         }
         db.mark_alert_sent(a.id, Utc::now())?;
         dispatched += 1;
