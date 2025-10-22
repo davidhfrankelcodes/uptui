@@ -1,10 +1,39 @@
 use crate::config::Config;
 use crate::storage::Db;
 use chrono::Utc;
+use crate::alert;
+use crate::smtp::SmtpSender;
+use std::sync::Arc;
+use tokio::signal;
+use tokio::time::{interval, Duration};
 
 pub async fn run_daemon(_cfg: &Config) -> anyhow::Result<()> {
-    // placeholder: real daemon would schedule checks, enqueue alerts, and manage rotation
-    tracing::info!("daemon started (placeholder)");
+    tracing::info!("daemon starting");
+
+    // build a sender from config if available; for now use stub SmtpSender
+    let sender: Arc<dyn alert::Sender> = if let Some(s) = &_cfg.smtp {
+        Arc::new(SmtpSender::new(s.from.clone(), Some(s.server.clone())))
+    } else {
+        Arc::new(SmtpSender::new("uptui".to_string(), None))
+    };
+
+    let db_path = &_cfg.db.path;
+
+    let mut tick = interval(Duration::from_secs(10));
+
+    loop {
+        tokio::select! {
+            _ = tick.tick() => {
+                tracing::info!("daemon: running cycle and dispatch");
+                let _ = run_cycle_and_dispatch(db_path, sender.as_ref(), _cfg.smtp.as_ref().and_then(|s| s.rate_limit_seconds));
+            }
+            _ = signal::ctrl_c() => {
+                tracing::info!("daemon: received shutdown");
+                break;
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -57,4 +86,14 @@ pub fn run_one_cycle(db_path: &str) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+/// Run one cycle (checks) and then dispatch pending alerts using the provided sender and optional rate limit.
+pub fn run_cycle_and_dispatch(db_path: &str, sender: &dyn alert::Sender, rate_limit_seconds: Option<u64>) -> anyhow::Result<usize> {
+    // run checks
+    run_one_cycle(db_path)?;
+
+    // dispatch alerts
+    let dispatched = alert::dispatch_pending_alerts(sender, db_path, rate_limit_seconds)?;
+    Ok(dispatched)
 }
