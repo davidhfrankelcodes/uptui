@@ -2,7 +2,6 @@ use crate::config::Config;
 use crate::storage::Db;
 use chrono::Utc;
 use crate::alert;
-use crate::smtp::SmtpSender;
 use std::sync::Arc;
 use tokio::signal;
 use tokio::time::{interval, Duration};
@@ -10,11 +9,47 @@ use tokio::time::{interval, Duration};
 pub async fn run_daemon(_cfg: &Config) -> anyhow::Result<()> {
     tracing::info!("daemon starting");
 
-    // build a sender from config if available; for now use stub SmtpSender
+    // build a sender from config if available
+    #[cfg(feature = "smtp")]
+    let sender: Arc<dyn alert::Sender> = {
+        if let Some(s) = &_cfg.smtp {
+            match crate::smtp_lettre::SmtpSenderL::from_config(s) {
+                Ok(sndr) => Arc::new(sndr),
+                Err(e) => {
+                    tracing::error!(error = %e, "failed to build lettre smtp sender; falling back to stub");
+                    // local fallback stub sender to ensure we have a Sender implementation
+                    struct LocalStub;
+                    impl crate::alert::Sender for LocalStub {
+                        fn send(&self, monitor_id: &str, message: &str) -> anyhow::Result<()> {
+                            tracing::info!(monitor = monitor_id, message = message, "local stub send");
+                            Ok(())
+                        }
+                    }
+                    Arc::new(LocalStub)
+                }
+            }
+        } else {
+            match crate::smtp_lettre::SmtpSenderL::new_with_stub("uptui") {
+                Ok(s) => Arc::new(s),
+                Err(_) => {
+                    struct LocalStub;
+                    impl crate::alert::Sender for LocalStub {
+                        fn send(&self, monitor_id: &str, message: &str) -> anyhow::Result<()> {
+                            tracing::info!(monitor = monitor_id, message = message, "local stub send");
+                            Ok(())
+                        }
+                    }
+                    Arc::new(LocalStub)
+                }
+            }
+        }
+    };
+
+    #[cfg(not(feature = "smtp"))]
     let sender: Arc<dyn alert::Sender> = if let Some(s) = &_cfg.smtp {
-        Arc::new(SmtpSender::new(s.from.clone(), Some(s.server.clone())))
+        Arc::new(crate::smtp::SmtpSender::new(s.from.clone(), Some(s.server.clone())))
     } else {
-        Arc::new(SmtpSender::new("uptui".to_string(), None))
+        Arc::new(crate::smtp::SmtpSender::new("uptui".to_string(), None))
     };
 
     let db_path = &_cfg.db.path;

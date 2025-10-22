@@ -1,5 +1,4 @@
-use crate::alert::Sender;
-use tracing::info;
+// smtp module: re-export lettre-backed sender when feature enabled, otherwise a simple stub.
 
 /// A stub SMTP sender that logs sends. This is easy to test.
 #[cfg(feature = "smtp")]
