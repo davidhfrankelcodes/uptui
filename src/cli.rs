@@ -42,11 +42,20 @@ pub enum MonitorCmd {
         id: String,
         name: String,
         target: String,
+        /// Comma-separated list of recipient email addresses
+        #[arg(long)]
+        recipients: Option<String>,
     },
     /// List monitors
     List,
     /// Remove a monitor
     Remove {
         id: String,
+    },
+    /// Set recipients for a monitor (comma-separated)
+    SetRecipients {
+        id: String,
+        #[arg(long)]
+        recipients: String,
     },
 }

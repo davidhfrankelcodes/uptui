@@ -95,6 +95,9 @@ Recent changes
 
 	# remove monitor
 	cargo run -- --db ./uptui.db monitor remove m1
+
+	# set recipients for a monitor
+	cargo run -- --db ./uptui.db monitor set-recipients m1 --recipients ops@example.org,oncall@example.org
 	```
 
 - Tests added to cover the new features (run them individually):

@@ -31,8 +31,27 @@ async fn main() -> anyhow::Result<()> {
             let db_path = cli.db.clone().unwrap_or_else(|| "uptui.db".to_string());
             let db = uptui::storage::Db::open(&db_path).context("open db")?;
             match sub {
-                uptui::cli::MonitorCmd::Add { id, name, target } => {
+                uptui::cli::MonitorCmd::Add { id, name, target, recipients } => {
                     db.insert_monitor(id, name, target)?;
+                    if let Some(r) = recipients {
+                        // validate, normalize and dedupe addresses
+                        let re = regex::Regex::new(r"(?i)^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$").expect("regex");
+                        let mut seen = std::collections::HashSet::new();
+                        let mut parts = Vec::new();
+                        for part in r.split(',') {
+                            let p = part.trim().to_lowercase();
+                            if p.is_empty() { continue; }
+                            if re.is_match(&p) && seen.insert(p.clone()) {
+                                parts.push(p);
+                            }
+                        }
+                        if !parts.is_empty() {
+                            let joined = parts.join(",");
+                            db.set_monitor_recipients(id, Some(joined.as_str()))?;
+                        } else {
+                            println!("no valid recipients provided; skipping recipients");
+                        }
+                    }
                     println!("monitor {} added", id);
                 }
                 uptui::cli::MonitorCmd::List => {
@@ -47,6 +66,25 @@ async fn main() -> anyhow::Result<()> {
                         println!("deleted monitor {}", id);
                     } else {
                         println!("monitor {} not found", id);
+                    }
+                }
+                uptui::cli::MonitorCmd::SetRecipients { id, recipients } => {
+                    // validate recipients similarly to add
+                    let re = regex::Regex::new(r"(?i)^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$").expect("regex");
+                    let mut seen = std::collections::HashSet::new();
+                    let mut parts = Vec::new();
+                    for part in recipients.split(',') {
+                        let p = part.trim().to_lowercase();
+                        if p.is_empty() { continue; }
+                        if re.is_match(&p) && seen.insert(p.clone()) {
+                            parts.push(p);
+                        }
+                    }
+                    if parts.is_empty() {
+                        println!("no valid recipients provided; not updated");
+                    } else {
+                        db.set_monitor_recipients(id, Some(parts.join(",").as_str()))?;
+                        println!("recipients updated for {}", id);
                     }
                 }
             }
