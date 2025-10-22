@@ -2,26 +2,36 @@ use crate::alert::Sender;
 use tracing::info;
 
 /// A stub SMTP sender that logs sends. This is easy to test.
-pub struct SmtpSender {
-    pub from: String,
-    pub server: Option<String>,
-}
+#[cfg(feature = "smtp")]
+pub use crate::smtp_lettre::SmtpSenderL as SmtpSender;
 
-impl SmtpSender {
-    pub fn new(from: impl Into<String>, server: Option<String>) -> Self {
-        Self { from: from.into(), server }
+#[cfg(not(feature = "smtp"))]
+mod stub {
+    use anyhow::Result;
+    use tracing::info;
+
+    pub struct SmtpSender {
+        pub from: String,
+        pub server: Option<String>,
     }
-}
 
-impl Sender for SmtpSender {
-    fn send(&self, monitor_id: &str, message: &str) -> anyhow::Result<()> {
-        // In a production implementation, use `lettre` to send via SMTP here.
-        // For now, log the send so tests can provide a TestSender for assertions.
-        if let Some(srv) = &self.server {
-            info!("sending alert for {} via {}: {}", monitor_id, srv, message);
-        } else {
-            info!("sending alert for {}: {}", monitor_id, message);
+    impl SmtpSender {
+        pub fn new(from: impl Into<String>, server: Option<String>) -> Self {
+            Self { from: from.into(), server }
         }
-        Ok(())
+    }
+
+    impl crate::alert::Sender for SmtpSender {
+        fn send(&self, monitor_id: &str, message: &str) -> Result<()> {
+            if let Some(srv) = &self.server {
+                info!(monitor_id = monitor_id, server = srv, message = message, "sending alert via stub");
+            } else {
+                info!(monitor_id = monitor_id, message = message, "sending alert via stub");
+            }
+            Ok(())
+        }
     }
 }
+
+#[cfg(not(feature = "smtp"))]
+pub use stub::SmtpSender;
