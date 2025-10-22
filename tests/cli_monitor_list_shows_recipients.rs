@@ -23,7 +23,7 @@ fn cli_monitor_list_shows_recipients() {
     // list and assert output contains recipients
     let mut cmd3 = Command::cargo_bin("uptui").expect("binary");
     cmd3.arg("monitor").arg("list").arg("--db").arg(&dbpath_s);
-    let assert = cmd3.assert().success().stdout(predicate::str::contains("m-no\tNo Recip\thttp://localhost/\t-"))
+    cmd3.assert().success()
+        .stdout(predicate::str::contains("m-no\tNo Recip\thttp://localhost/\t-"))
         .stdout(predicate::str::contains("m-yes\tYes Recip\thttp://localhost/\ta@x.com,b@x.com"));
-    assert;
 }
