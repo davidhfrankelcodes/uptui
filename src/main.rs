@@ -57,7 +57,8 @@ async fn main() -> anyhow::Result<()> {
                 uptui::cli::MonitorCmd::List => {
                     let mons = db.list_monitors()?;
                     for m in mons {
-                        println!("{}\t{}\t{}", m.id, m.name, m.target);
+                        let recs = m.recipients.clone().unwrap_or_else(|| "-".to_string());
+                        println!("{}\t{}\t{}\t{}", m.id, m.name, m.target, recs);
                     }
                 }
                 uptui::cli::MonitorCmd::Remove { id } => {

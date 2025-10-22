@@ -90,7 +90,7 @@ Recent changes
 	# add a monitor into a temporary DB path
 	cargo run -- --db ./uptui.db monitor add m1 "My monitor" http://example.local
 
-	# list monitors
+	# list monitors (shows id, name, target, recipients)
 	cargo run -- --db ./uptui.db monitor list
 
 	# remove monitor
