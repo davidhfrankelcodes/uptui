@@ -248,3 +248,318 @@ impl Db {
         Ok(n)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{Duration, TimeZone};
+
+    fn create_test_db() -> Db {
+        Db::open(":memory:").expect("Failed to create test database")
+    }
+
+    #[test]
+    fn test_db_initialization() {
+        let _db = create_test_db();
+        // If we get here without panicking, initialization worked
+        assert!(true);
+    }
+
+    #[test]
+    fn test_insert_and_get_monitor() {
+        let db = create_test_db();
+        
+        // Insert a monitor
+        db.insert_monitor("test-1", "Test Monitor", "http://example.com")
+            .expect("Failed to insert monitor");
+        
+        // Retrieve the monitor
+        let monitor = db.get_monitor("test-1")
+            .expect("Failed to get monitor")
+            .expect("Monitor not found");
+        
+        assert_eq!(monitor.id, "test-1");
+        assert_eq!(monitor.name, "Test Monitor");
+        assert_eq!(monitor.target, "http://example.com");
+        assert_eq!(monitor.recipients, None);
+    }
+
+    #[test]
+    fn test_get_nonexistent_monitor() {
+        let db = create_test_db();
+        
+        let monitor = db.get_monitor("nonexistent")
+            .expect("Failed to query monitor");
+        
+        assert!(monitor.is_none());
+    }
+
+    #[test]
+    fn test_list_monitors() {
+        let db = create_test_db();
+        
+        // Insert multiple monitors
+        db.insert_monitor("test-1", "Test Monitor 1", "http://example1.com")
+            .expect("Failed to insert monitor 1");
+        db.insert_monitor("test-2", "Test Monitor 2", "http://example2.com")
+            .expect("Failed to insert monitor 2");
+        
+        let monitors = db.list_monitors().expect("Failed to list monitors");
+        
+        assert_eq!(monitors.len(), 2);
+        assert_eq!(monitors[0].id, "test-1"); // Should be ordered by id
+        assert_eq!(monitors[1].id, "test-2");
+    }
+
+    #[test]
+    fn test_update_monitor_preserves_recipients() {
+        let db = create_test_db();
+        
+        // Insert a monitor
+        db.insert_monitor("test-1", "Test Monitor", "http://example.com")
+            .expect("Failed to insert monitor");
+        
+        // Set recipients
+        db.set_monitor_recipients("test-1", Some("admin@example.com"))
+            .expect("Failed to set recipients");
+        
+        // Update the monitor (should preserve recipients)
+        db.insert_monitor("test-1", "Updated Monitor", "http://updated.com")
+            .expect("Failed to update monitor");
+        
+        let monitor = db.get_monitor("test-1")
+            .expect("Failed to get monitor")
+            .expect("Monitor not found");
+        
+        assert_eq!(monitor.name, "Updated Monitor");
+        assert_eq!(monitor.target, "http://updated.com");
+        assert_eq!(monitor.recipients, Some("admin@example.com".to_string()));
+    }
+
+    #[test]
+    fn test_set_monitor_recipients() {
+        let db = create_test_db();
+        
+        // Insert a monitor
+        db.insert_monitor("test-1", "Test Monitor", "http://example.com")
+            .expect("Failed to insert monitor");
+        
+        // Set recipients
+        db.set_monitor_recipients("test-1", Some("admin@example.com,user@example.com"))
+            .expect("Failed to set recipients");
+        
+        let monitor = db.get_monitor("test-1")
+            .expect("Failed to get monitor")
+            .expect("Monitor not found");
+        
+        assert_eq!(monitor.recipients, Some("admin@example.com,user@example.com".to_string()));
+        
+        // Clear recipients
+        db.set_monitor_recipients("test-1", None)
+            .expect("Failed to clear recipients");
+        
+        let monitor = db.get_monitor("test-1")
+            .expect("Failed to get monitor")
+            .expect("Monitor not found");
+        
+        assert_eq!(monitor.recipients, None);
+    }
+
+    #[test]
+    fn test_delete_monitor() {
+        let db = create_test_db();
+        
+        // Insert a monitor
+        db.insert_monitor("test-1", "Test Monitor", "http://example.com")
+            .expect("Failed to insert monitor");
+        
+        // Verify it exists
+        assert!(db.get_monitor("test-1").expect("Failed to get monitor").is_some());
+        
+        // Delete it
+        let deleted_count = db.delete_monitor("test-1")
+            .expect("Failed to delete monitor");
+        
+        assert_eq!(deleted_count, 1);
+        
+        // Verify it's gone
+        assert!(db.get_monitor("test-1").expect("Failed to get monitor").is_none());
+        
+        // Delete non-existent monitor
+        let deleted_count = db.delete_monitor("nonexistent")
+            .expect("Failed to delete nonexistent monitor");
+        
+        assert_eq!(deleted_count, 0);
+    }
+
+    #[test]
+    fn test_insert_result() {
+        let db = create_test_db();
+        let timestamp = Utc::now();
+        
+        let result_id = db.insert_result("test-monitor", true, Some(200), timestamp)
+            .expect("Failed to insert result");
+        
+        assert!(result_id > 0);
+        
+        // Verify we can retrieve the result
+        let results = db.recent_results("test-monitor")
+            .expect("Failed to get recent results");
+        
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].monitor_id, "test-monitor");
+        assert_eq!(results[0].success, true);
+        assert_eq!(results[0].status_code, Some(200));
+        // Note: We don't check exact timestamp equality due to potential precision differences
+    }
+
+    #[test]
+    fn test_recent_results_limit() {
+        let db = create_test_db();
+        let base_time = Utc.with_ymd_and_hms(2023, 1, 1, 0, 0, 0).unwrap();
+        
+        // Insert more than 100 results
+        for i in 0..150 {
+            let timestamp = base_time + Duration::minutes(i);
+            db.insert_result("test-monitor", i % 2 == 0, Some(200), timestamp)
+                .expect("Failed to insert result");
+        }
+        
+        let results = db.recent_results("test-monitor")
+            .expect("Failed to get recent results");
+        
+        // Should be limited to 100 results, ordered by id DESC (most recent first)
+        assert_eq!(results.len(), 100);
+        
+        // First result should be the most recent (id 150)
+        assert!(results[0].id > results[1].id);
+    }
+
+    #[test]
+    fn test_insert_and_fetch_alerts() {
+        let db = create_test_db();
+        let timestamp = Utc::now();
+        
+        let alert_id = db.insert_alert("test-monitor", "Test alert message", timestamp)
+            .expect("Failed to insert alert");
+        
+        assert!(alert_id > 0);
+        
+        // Fetch alerts for specific monitor
+        let alerts = db.fetch_alerts(Some("test-monitor"))
+            .expect("Failed to fetch alerts");
+        
+        assert_eq!(alerts.len(), 1);
+        assert_eq!(alerts[0].monitor_id, "test-monitor");
+        assert_eq!(alerts[0].message, "Test alert message");
+        assert_eq!(alerts[0].sent, false);
+        assert_eq!(alerts[0].sent_at, None);
+        
+        // Fetch all alerts
+        let all_alerts = db.fetch_alerts(None)
+            .expect("Failed to fetch all alerts");
+        
+        assert_eq!(all_alerts.len(), 1);
+    }
+
+    #[test]
+    fn test_mark_alert_sent() {
+        let db = create_test_db();
+        let created_at = Utc::now();
+        let sent_at = created_at + Duration::minutes(5);
+        
+        let alert_id = db.insert_alert("test-monitor", "Test alert", created_at)
+            .expect("Failed to insert alert");
+        
+        // Mark as sent
+        db.mark_alert_sent(alert_id, sent_at)
+            .expect("Failed to mark alert as sent");
+        
+        let alerts = db.fetch_alerts(Some("test-monitor"))
+            .expect("Failed to fetch alerts");
+        
+        assert_eq!(alerts.len(), 1);
+        assert_eq!(alerts[0].sent, true);
+        assert!(alerts[0].sent_at.is_some());
+    }
+
+    #[test]
+    fn test_get_last_sent_time() {
+        let db = create_test_db();
+        let base_time = Utc.with_ymd_and_hms(2023, 1, 1, 12, 0, 0).unwrap();
+        
+        // Initially no sent alerts
+        let last_sent = db.get_last_sent_time("test-monitor")
+            .expect("Failed to get last sent time");
+        assert!(last_sent.is_none());
+        
+        // Insert and send multiple alerts
+        let alert1_id = db.insert_alert("test-monitor", "Alert 1", base_time)
+            .expect("Failed to insert alert 1");
+        let alert2_id = db.insert_alert("test-monitor", "Alert 2", base_time + Duration::minutes(10))
+            .expect("Failed to insert alert 2");
+        
+        db.mark_alert_sent(alert1_id, base_time + Duration::minutes(5))
+            .expect("Failed to mark alert 1 as sent");
+        db.mark_alert_sent(alert2_id, base_time + Duration::minutes(15))
+            .expect("Failed to mark alert 2 as sent");
+        
+        // Should return the most recent sent time
+        let last_sent = db.get_last_sent_time("test-monitor")
+            .expect("Failed to get last sent time")
+            .expect("Expected last sent time");
+        
+        // Should be approximately the second alert's sent time
+        let expected = base_time + Duration::minutes(15);
+        assert!((last_sent - expected).num_seconds().abs() < 1);
+    }
+
+    #[test]
+    fn test_rotate_old_results() {
+        let db = create_test_db();
+        let now = Utc::now();
+        let old_time = now - Duration::days(40);
+        let recent_time = now - Duration::days(10);
+        
+        // Insert old and recent results
+        db.insert_result("test-monitor", true, Some(200), old_time)
+            .expect("Failed to insert old result");
+        db.insert_result("test-monitor", true, Some(200), recent_time)
+            .expect("Failed to insert recent result");
+        
+        // Rotate with 30-day retention
+        let deleted_count = db.rotate(30)
+            .expect("Failed to rotate data");
+        
+        assert_eq!(deleted_count, 1); // Only the old result should be deleted
+        
+        let remaining_results = db.recent_results("test-monitor")
+            .expect("Failed to get remaining results");
+        
+        assert_eq!(remaining_results.len(), 1);
+        // The remaining result should be the recent one
+        assert!((remaining_results[0].timestamp - recent_time).num_seconds().abs() < 1);
+    }
+
+    #[test]
+    fn test_rotate_no_old_results() {
+        let db = create_test_db();
+        let now = Utc::now();
+        let recent_time = now - Duration::days(10);
+        
+        // Insert only recent results
+        db.insert_result("test-monitor", true, Some(200), recent_time)
+            .expect("Failed to insert recent result");
+        
+        // Rotate with 30-day retention
+        let deleted_count = db.rotate(30)
+            .expect("Failed to rotate data");
+        
+        assert_eq!(deleted_count, 0); // No results should be deleted
+        
+        let remaining_results = db.recent_results("test-monitor")
+            .expect("Failed to get remaining results");
+        
+        assert_eq!(remaining_results.len(), 1);
+    }
+}
