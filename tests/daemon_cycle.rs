@@ -7,7 +7,11 @@ use tiny_http::{Server, Response};
 fn daemon_one_cycle_creates_alerts() {
     // start healthy server (200)
     let healthy = Server::http("0.0.0.0:0").expect("start healthy");
-    let healthy_addr = healthy.server_addr();
+    let mut healthy_addr = healthy.server_addr().to_string();
+    // tiny_http may report 0.0.0.0 on some platforms; clients must use loopback instead
+    if healthy_addr.starts_with("0.0.0.0") {
+        healthy_addr = healthy_addr.replacen("0.0.0.0", "127.0.0.1", 1);
+    }
     let healthy_url = format!("http://{}", healthy_addr);
     let h = thread::spawn(move || {
         for request in healthy.incoming_requests() {
@@ -18,7 +22,10 @@ fn daemon_one_cycle_creates_alerts() {
 
     // start failing server (500)
     let failing = Server::http("0.0.0.0:0").expect("start failing");
-    let failing_addr = failing.server_addr();
+    let mut failing_addr = failing.server_addr().to_string();
+    if failing_addr.starts_with("0.0.0.0") {
+        failing_addr = failing_addr.replacen("0.0.0.0", "127.0.0.1", 1);
+    }
     let failing_url = format!("http://{}", failing_addr);
     let f = thread::spawn(move || {
         for request in failing.incoming_requests() {

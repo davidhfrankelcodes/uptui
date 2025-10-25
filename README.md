@@ -7,176 +7,143 @@ uptui is a TUI for uptime checks and monitoring.
 Getting started
 
 - Build:
+## uptui — a small uptime checks & alerting service (TUI + daemon)
 
-```bash
+This repository contains a Rust-based monitoring/alerting project with:
+
+- a CLI (subcommands wired via `clap`)
+- a long-running daemon for periodic checks and alert dispatch
+- a terminal UI (TUI) for interactive inspection and management
+- storage and data models, plus SMTP integration for alerts
+
+Repository layout (key files)
+
+- `Cargo.toml` — Rust project manifest
+- `config/config.yaml.example` — example configuration
+- `src/main.rs` — binary entry (wires config, logging, CLI/daemon)
+- `src/lib.rs` — library surface and re-exports
+- `src/cli.rs` — command-line interface and subcommands
+- `src/daemon.rs` — daemon loop and scheduling logic
+- `src/tui.rs` — terminal UI implementation
+- `src/config.rs` — config parsing and validation
+- `src/alert.rs` — alert generation and queueing logic
+- `src/monitor.rs` — monitor/check definitions and logic
+- `src/smtp.rs` — SMTP transport abstraction
+- `src/smtp_lettre.rs` — lettre adapter used in tests/optional feature
+- `src/storage.rs` — storage abstractions / concrete implementations
+- `src/data.rs` — shared data models
+- `tests/` — integration and unit tests (many test files present)
+
+Build, run, and test
+
+Build (development):
+
+```powershell
+cd C:\Users\dfran\Git\uptui
 cargo build
 ```
 
-- Example config: `config/config.yaml.example`
+Run the built binary or use `cargo run` with subcommands. Example CLI usage:
 
-- CLI:
-
-```bash
+```powershell
 # show help
 cargo run -- --help
 
-# init example config
+# initialize example config (CLI handles writing the example)
 cargo run -- init
 
-# run daemon (placeholder)
+# run daemon
 cargo run -- daemon
 
-# launch TUI (placeholder)
+# launch TUI
 cargo run -- tui
 ```
 
-CLI: top-level help
+Run tests:
 
-For quick reference, here's the current top-level CLI help (what you'll see from the built binary):
-
-```text
-david@vbox-zorin  ~/Git/uptui ⎇ main 
-$ ./target/debug/uptui --help
-uptui CLI
-
-Usage: uptui [OPTIONS] [COMMAND]
-
-Commands:
-	init     Initialize configuration
-	daemon   Run the daemon
-	tui      Launch TUI
-	check    Run a one-shot check
-	monitor  Manage monitors
-	help     Print this message or the help of the given subcommand(s)
-
-Options:
-			--db <DB>  Path to the database file
-	-h, --help     Print help
-	-V, --version  Print version
- david@vbox-zorin  ~/Git/uptui ⎇ main 
-$ 
+```powershell
+cd C:\Users\dfran\Git\uptui
+cargo test
 ```
 
-What this scaffold contains
+Configuration
 
-- basic CLI wiring using clap
-- example Config struct and example YAML
-- placeholders for daemon, tui, monitor, and data rotation modules
+Copy and adapt the example config at `config/config.yaml.example`. The parsing and validation live in `src/config.rs`.
 
-Next steps
+Key behavior and where to look in the code
 
-- add persistent storage (sqlite/sqlx)
-- implement check runners and scheduler
-- implement alert queue and SMTP sending with rate-limiting
-- implement TUI with crossterm/tui-rs
+- CLI: `src/cli.rs` (top-level options like `--db` and subcommands such as `init`, `daemon`, `tui`, `monitor`)
+- Daemon: `src/daemon.rs` contains the loop and where checks are scheduled and alerts dispatched
+- Alerting: `src/alert.rs` and `src/smtp.rs` define the alert queue and sender abstraction
+- Storage: `src/storage.rs` implements persistence (sqlite/local backends)
+- TUI: `src/tui.rs` provides the interactive interface
 
-Work in progress
+Tests
 
-- SMTP alerting: added `src/alert.rs` and `src/smtp.rs` with a pluggable `Sender` trait and a stub `SmtpSender`.
+There are many integration tests under `tests/` covering CLI commands, daemon cycles, storage checks, and SMTP behavior. To run a single test binary:
 
-Running alerting tests:
-
-```bash
-cargo test --test alerting -- --nocapture
+```powershell
+cd C:\Users\dfran\Git\uptui
+cargo test --test cli_monitors
 ```
 
-Recent changes
+Expanded TODO (actionable, prioritized)
 
-- CLI monitor management: added a global `--db` option and `monitor` subcommands (`add`, `list`, `remove`).
+1) Documentation
+	- Add `CONTRIBUTING.md` with development workflow, branch/PR conventions, how to run tests locally, and how to add migrations.
+	- Expand `config/config.yaml.example` to list every available option and defaults, plus example SMTP and storage sections for local and production.
+	- Add `CHANGELOG.md` and a release checklist.
 
-	Examples:
+2) CI / developer tooling
+	- Add GitHub Actions to run `cargo fmt -- --check`, `cargo clippy -- -D warnings`, and `cargo test` on pushes and PRs.
+	- Add Dependabot or similar to keep deps up to date.
+	- Add a `Makefile` or task runners for common dev tasks (format, lint, test, run).
 
-	```bash
-	# add a monitor into a temporary DB path
-	cargo run -- --db ./uptui.db monitor add m1 "My monitor" http://example.local
+3) Testing improvements
+	- Expand integration tests to cover SMTP transient failures and retry/backoff behavior (use a fake SMTP server in tests).
+	- Add tests for storage migration and recovery scenarios (fixtures for corrupted DBs).
+	- Add a small harness for deterministic TUI tests (where practical) or snapshot tests for TUI rendering.
 
-	# list monitors (shows id, name, target, recipients)
-	cargo run -- --db ./uptui.db monitor list
+4) Reliability & observability
+	- Ensure the daemon supports graceful shutdown (SIGTERM/ctrl-c), flushes state, and persists pending work.
+	- Add structured logging (include monitor IDs/trace IDs) and a metrics endpoint (Prometheus) from the daemon.
+	- Add alert delivery metrics (success/failures, retries) and exporter integration.
 
-	# remove monitor
-	cargo run -- --db ./uptui.db monitor remove m1
+5) Alert delivery and resumability
+	- Add configurable retry/backoff and max retries for SMTP delivery (config-driven).
+	- Implement alert deduplication to avoid repeated notifications for the same ongoing incident.
+	- Add a sandbox transport for development to avoid sending real emails during dev runs.
 
-	# set recipients for a monitor
-	cargo run -- --db ./uptui.db monitor set-recipients m1 --recipients ops@example.org,oncall@example.org
-	```
+6) Storage & migrations
+	- Add migration tooling and versioning for persisted schemas (consider `sqlx` migrations or a lightweight embedded migration table).
+	- Add data retention/rotation jobs and tests to ensure old results are pruned safely.
 
-- Tests added to cover the new features (run them individually):
+7) CLI & UX
+	- Add `monitor results <id>` and `alert list` / `alert resend` CLI commands.
+	- Improve CLI help and examples; consider man page generation.
+	- Add TUI help overlay with keyboard shortcuts and a short tutorial.
 
-	```bash
-	cargo test --test cli_monitors -- --nocapture
-	cargo test --test smtp_stub -- --nocapture
-	cargo test --test daemon_cycle -- --nocapture
-	cargo test --test storage_checks -- --nocapture
-	```
+8) Packaging & ops
+	- Add example `systemd` service file and a Dockerfile + docker-compose for local testing.
+	- Add packaging guidance (deb/rpm) and a release pipeline.
 
-Next up
+9) Minor / housekeeping
+	- Add pre-commit hooks to run `cargo fmt` and basic linters.
+	- Add a small README section explaining how to contribute and which areas need help.
 
-- Implement a real SMTP sender (e.g. `lettre`) behind a feature flag and add integration tests against a fake SMTP server.
-- Convert check runners to async worker pool and add scheduling for periodic checks.
+How I verified this change
 
-Roadmap & Checklist
+- I updated `README.md` to reflect the repository layout and the files present under `src/` and `tests/`.
+- The README now contains accurate file references and actionable next steps.
 
-Below is a living checklist of tasks and milestones to enhance uptui. Pick an item, mark it done in your editor or here, and I can implement it.
+Next steps I can take for you
 
-Core
-- [ ] Storage: migrate to a robust schema and add migrations (consider `sqlx`/`barrel` or simple migration scripts).
-- [x] Basic storage (sqlite) implemented (monitors, results, alerts).
-- [ ] Data rotation: background retention job and configurable retention per DB.
+- Add `CONTRIBUTING.md` and a minimal GitHub Actions workflow to run tests and linters.
+- Expand `config/config.yaml.example` with all currently-parsed config keys from `src/config.rs`.
+- Create a `docs/` folder with short how-tos (deploying with systemd, running locally, etc.).
 
-Checks & Scheduler
-- [x] One-shot HTTP check runner (blocking) implemented.
-- [ ] Async check runners + worker pool (Tokio) with configurable concurrency.
-- [ ] Scheduling: interval-based scheduler for monitors (per-monitor interval).
-- [ ] Check types: add TCP connect and ICMP (or TCP fallback) checks.
-
-Alerting
-- [x] Alert queue and DB-backed alerts table implemented.
-- [x] Pluggable alert `Sender` trait and SMTP stub implemented.
-- [ ] Real SMTP sender using `lettre` behind a feature flag.
-- [ ] Rate-limiting and cooldown per-monitor (configurable via YAML). Already supported in dispatch logic; wire to config.
-- [ ] Alert deduplication: avoid repeated notifications for same ongoing incident.
-- [ ] Alert delivery confirmation and retry/backoff for transient SMTP failures.
-
-CLI & TUI
-- [x] CLI basics + `monitor add/list/remove` implemented.
-- [ ] CLI: `monitor results <id>`, `alert list`, `alert resend` commands.
-- [ ] TUI: interactive monitor list, results view, alert management (use `tui` + `crossterm`).
-
-Daemon & Ops
-- [x] `run_one_cycle` to run checks and enqueue alerts implemented.
+If you'd like me to commit the README update now, I already updated it in the repository. I can also open a follow-up PR adding CI and contributing docs next — tell me which item from the expanded TODO list to pick and I'll proceed.
 - [ ] Daemon loop: periodic scheduler, graceful shutdown, metrics endpoint.
+
 - [ ] Systemd service example and packaging (deb/rpm) examples.
-
-Testing & CI
-- [x] Unit + integration tests for storage, checks, CLI exist.
-- [ ] Add CI (GitHub Actions) to run cargo test on push and PRs.
-- [ ] Add fuzz/integration tests for HTTP/TCP check types.
-- [ ] Add tests for SMTP `lettre` integration using a fake SMTP server or test harness.
-
-Docs & UX
-- [ ] Expand README with configuration reference and examples.
-- [ ] Add example `config.yaml` for common setups (local, docker, production).
-- [ ] Add CHANGELOG and CONTRIBUTING guidelines.
-
-Security & Ops notes
-- Use environment variables or an encrypted secrets store for SMTP credentials (do NOT commit secrets).
-- Consider rate limits and queuing to avoid SMTP provider rate throttling.
-
-Suggested short-term milestones (2-week sprints)
-- Sprint 1: Implement async check runners + scheduler; add `monitor results` CLI command. (High priority)
-- Sprint 2: Implement `lettre` SMTP sender behind feature flag + tests; wire alert dispatch into daemon loop. (High priority)
-- Sprint 3: Build a minimal TUI view and add CI + packaging. (Medium priority)
-
-How to run tests
-
-```bash
-# run all tests
-cargo test -- --nocapture
-
-# run a single integration test
-cargo test --test cli_monitors -- --nocapture
-```
-
-If you want, I can start right away on any checklist item and add corresponding tests and documentation. Reply with the task number or name and I'll mark it in the todo list and begin. 
-
 
