@@ -18,7 +18,11 @@ async fn main() -> anyhow::Result<()> {
             println!("Wrote example config to {}", out);
         }
         Some(uptui::cli::Commands::Daemon) => {
-            let cfg = Config::example();
+            let mut cfg = Config::example();
+            // Override database path from CLI if provided
+            if let Some(db_path) = &cli.db {
+                cfg.db.path = db_path.clone();
+            }
             uptui::daemon::run_daemon(&cfg).await?;
         }
         Some(uptui::cli::Commands::Tui) => {
@@ -86,6 +90,46 @@ async fn main() -> anyhow::Result<()> {
                     } else {
                         db.set_monitor_recipients(id, Some(parts.join(",").as_str()))?;
                         println!("recipients updated for {}", id);
+                    }
+                }
+                uptui::cli::MonitorCmd::Results { id, limit } => {
+                    // Verify monitor exists
+                    let monitor = db.get_monitor(id)?;
+                    if monitor.is_none() {
+                        println!("monitor {} not found", id);
+                        return Ok(());
+                    }
+                    let monitor = monitor.unwrap();
+                    
+                    // Get recent results (limited to max 100 in storage.rs)
+                    let results = db.recent_results(id)?;
+                    let display_limit = (*limit).min(100).min(results.len());
+                    
+                    if results.is_empty() {
+                        println!("no results found for monitor {}", id);
+                        return Ok(());
+                    }
+                    
+                    println!("Recent results for monitor '{}' ({}):", monitor.name, monitor.target);
+                    println!("ID\tSuccess\tStatus\tTimestamp");
+                    println!("--\t-------\t------\t---------");
+                    
+                    for result in results.iter().take(display_limit) {
+                        let status_str = match result.status_code {
+                            Some(code) => code.to_string(),
+                            None => "-".to_string(),
+                        };
+                        let success_str = if result.success { "✓" } else { "✗" };
+                        println!("{}\t{}\t{}\t{}", 
+                            result.id, 
+                            success_str, 
+                            status_str, 
+                            result.timestamp.format("%Y-%m-%d %H:%M:%S UTC")
+                        );
+                    }
+                    
+                    if results.len() > display_limit {
+                        println!("... ({} more results available)", results.len() - display_limit);
                     }
                 }
             }
