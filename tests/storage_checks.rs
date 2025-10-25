@@ -7,7 +7,10 @@ use tiny_http::{Server, Response};
 fn http_check_and_rotation() {
     // start tiny server in background
     let server = Server::http("0.0.0.0:0").expect("start server");
-    let addr = server.server_addr();
+    let mut addr = server.server_addr().to_string();
+    if addr.starts_with("0.0.0.0") {
+        addr = addr.replacen("0.0.0.0", "127.0.0.1", 1);
+    }
     let url = format!("http://{}", addr);
 
     let handle = thread::spawn(move || {
