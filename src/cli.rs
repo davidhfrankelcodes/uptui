@@ -58,4 +58,11 @@ pub enum MonitorCmd {
         #[arg(long)]
         recipients: String,
     },
+    /// Show recent results for a monitor
+    Results {
+        id: String,
+        /// Number of results to show (default: 10, max: 100)
+        #[arg(short, long, default_value = "10")]
+        limit: usize,
+    },
 }
