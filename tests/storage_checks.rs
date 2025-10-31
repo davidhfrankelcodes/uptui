@@ -6,7 +6,7 @@ use tiny_http::{Server, Response};
 #[test]
 fn http_check_and_rotation() {
     // start tiny server in background
-    let server = Server::http("0.0.0.0:0").expect("start server");
+    let server = Server::http("127.0.0.1:0").expect("start server");
     let mut addr = server.server_addr().to_string();
     if addr.starts_with("0.0.0.0") {
         addr = addr.replacen("0.0.0.0", "127.0.0.1", 1);

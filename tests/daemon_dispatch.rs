@@ -21,7 +21,7 @@ impl uptui::alert::Sender for TestSender {
 #[test]
 fn run_cycle_and_dispatch_sends_alerts() {
     // failing server
-    let failing = Server::http("0.0.0.0:0").expect("start failing");
+    let failing = Server::http("127.0.0.1:0").expect("start failing");
     let failing_addr = failing.server_addr();
     let failing_url = format!("http://{}", failing_addr);
     let f = thread::spawn(move || {

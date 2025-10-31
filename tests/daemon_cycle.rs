@@ -6,7 +6,7 @@ use tiny_http::{Server, Response};
 #[test]
 fn daemon_one_cycle_creates_alerts() {
     // start healthy server (200)
-    let healthy = Server::http("0.0.0.0:0").expect("start healthy");
+    let healthy = Server::http("127.0.0.1:0").expect("start healthy");
     let mut healthy_addr = healthy.server_addr().to_string();
     // tiny_http may report 0.0.0.0 on some platforms; clients must use loopback instead
     if healthy_addr.starts_with("0.0.0.0") {
@@ -21,7 +21,7 @@ fn daemon_one_cycle_creates_alerts() {
     });
 
     // start failing server (500)
-    let failing = Server::http("0.0.0.0:0").expect("start failing");
+    let failing = Server::http("127.0.0.1:0").expect("start failing");
     let mut failing_addr = failing.server_addr().to_string();
     if failing_addr.starts_with("0.0.0.0") {
         failing_addr = failing_addr.replacen("0.0.0.0", "127.0.0.1", 1);
