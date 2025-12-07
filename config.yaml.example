@@ -1,0 +1,8 @@
+# Save this file as config.yaml
+monitors:
+  - name: Google
+    url: https://www.google.com
+  - name: GitHub
+    url: https://github.com
+  - name: Homepage
+    url: https://homepage.local.davidhfrankel.com

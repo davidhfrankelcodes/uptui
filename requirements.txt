@@ -2,3 +2,4 @@ textual
 httpx[http2]
 aiosqlite
 rich
+PyYAML

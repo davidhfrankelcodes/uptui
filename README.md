@@ -12,11 +12,22 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 # install deps
 pip install -r requirements.txt
-# run the TUI
-python -m uptui.cli --example
+# run the TUI (reads monitors from ./config.yaml by default)
+python -m uptui.cli --config config.yaml
 ```
 
 Press `r` inside the app to run a manual refresh of checks.
 
 Next steps:
-- add persistence, scheduler, alerts, and more monitor types.
+
+Configuration
+ - Place your monitor definitions in `config.yaml` (or pass a path with `--config`).
+ - Example `config.yaml` structure:
+
+ ```yaml
+ monitors:
+   - name: MySite
+     url: https://example.com
+ ```
+
+ Press `r` inside the app to run a manual refresh of checks. The app performs an initial automatic refresh when it starts and will refresh every 30 seconds.

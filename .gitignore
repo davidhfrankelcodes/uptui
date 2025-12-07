@@ -3,3 +3,4 @@ __pycache__/
 *.py[cod]
 uptui/uptui.db
 .env
+config.yaml
