@@ -30,4 +30,6 @@ Configuration
      url: https://example.com
  ```
 
- Press `r` inside the app to run a manual refresh of checks. The app performs an initial automatic refresh when it starts and will refresh every 30 seconds.
+Press `r` inside the app to run a manual refresh of checks. The app performs an initial automatic refresh when it starts and will refresh every 30 seconds.
+
+UI note: the table shows an `Address` column — for HTTP monitors this is the URL, for TCP monitors this shows `host:port` so entries remain visually consistent.

@@ -28,9 +28,10 @@ class UptuiApp(App):
     async def on_mount(self) -> None:
         self.table = self.query_one("#monitors_table", DataTable)
         # define columns and initial rows
-        self.table.add_columns("Name", "URL", "Status", "Latency (ms)")
+        self.table.add_columns("Name", "Address", "Status", "Latency (ms)")
         for m in self.monitors:
-            self.table.add_row(m.get("name", ""), m.get("url", ""), "unknown", "-")
+            address = m.get("url") or (f"{m.get('host')}:{m.get('port')}" if m.get("host") and m.get("port") else "")
+            self.table.add_row(m.get("name", ""), address, "unknown", "-")
 
         # perform an initial refresh so the UI isn't all 'unknown'
         await self.action_refresh_checks()
@@ -46,4 +47,5 @@ class UptuiApp(App):
         self.table.clear()
         for r in results:
             latency = r.get("latency_ms", "-")
-            self.table.add_row(r.get("name", ""), r.get("url", ""), r.get("status", ""), str(latency))
+            address = r.get("address", r.get("url", ""))
+            self.table.add_row(r.get("name", ""), address, r.get("status", ""), str(latency))

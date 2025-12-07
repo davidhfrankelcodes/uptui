@@ -6,3 +6,7 @@ monitors:
     url: https://github.com
   - name: Homepage
     url: https://homepage.local.davidhfrankel.com
+  - name: SSH on localhost
+    type: tcp
+    host: 127.0.0.1
+    port: 22
