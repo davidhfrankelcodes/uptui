@@ -3,3 +3,5 @@ httpx[http2]
 aiosqlite
 rich
 PyYAML
+pytest
+pytest-asyncio
