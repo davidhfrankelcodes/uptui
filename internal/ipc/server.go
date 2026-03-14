@@ -1,0 +1,111 @@
+package ipc
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"log"
+	"net"
+
+	"uptui/internal/models"
+)
+
+// Handler is implemented by the daemon to handle IPC requests.
+type Handler interface {
+	GetAllStatus() []*models.MonitorStatus
+	AddMonitor(m models.Monitor) (*models.MonitorStatus, error)
+	DeleteMonitor(id int) error
+	PauseMonitor(id int) error
+	ResumeMonitor(id int) error
+}
+
+type Server struct {
+	addr    string
+	handler Handler
+}
+
+func NewServer(addr string, h Handler) *Server {
+	return &Server{addr: addr, handler: h}
+}
+
+func (s *Server) Listen(ctx context.Context) error {
+	l, err := net.Listen("tcp", s.addr)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		<-ctx.Done()
+		l.Close()
+	}()
+
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			select {
+			case <-ctx.Done():
+				return nil
+			default:
+				log.Printf("ipc accept: %v", err)
+				continue
+			}
+		}
+		go s.handleConn(conn)
+	}
+}
+
+func (s *Server) handleConn(conn net.Conn) {
+	defer conn.Close()
+	scanner := bufio.NewScanner(conn)
+	enc := json.NewEncoder(conn)
+
+	for scanner.Scan() {
+		var req Request
+		if err := json.Unmarshal(scanner.Bytes(), &req); err != nil {
+			_ = enc.Encode(Response{OK: false, Error: "invalid json"})
+			continue
+		}
+		resp := s.dispatch(req)
+		if err := enc.Encode(resp); err != nil {
+			return
+		}
+	}
+}
+
+func (s *Server) dispatch(req Request) Response {
+	switch req.Action {
+	case ActionList:
+		return Response{OK: true, Monitors: s.handler.GetAllStatus()}
+
+	case ActionAdd:
+		if req.Monitor == nil {
+			return Response{OK: false, Error: "monitor required"}
+		}
+		ms, err := s.handler.AddMonitor(*req.Monitor)
+		if err != nil {
+			return Response{OK: false, Error: err.Error()}
+		}
+		return Response{OK: true, Monitor: ms}
+
+	case ActionDelete:
+		if err := s.handler.DeleteMonitor(req.ID); err != nil {
+			return Response{OK: false, Error: err.Error()}
+		}
+		return Response{OK: true}
+
+	case ActionPause:
+		if err := s.handler.PauseMonitor(req.ID); err != nil {
+			return Response{OK: false, Error: err.Error()}
+		}
+		return Response{OK: true}
+
+	case ActionResume:
+		if err := s.handler.ResumeMonitor(req.ID); err != nil {
+			return Response{OK: false, Error: err.Error()}
+		}
+		return Response{OK: true}
+
+	default:
+		return Response{OK: false, Error: "unknown action"}
+	}
+}

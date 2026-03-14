@@ -1,0 +1,33 @@
+# Go test artifacts
+*.test
+*.out
+coverage.html
+
+# Runtime files (if daemon is run from the repo directory)
+db.json
+db.json.tmp
+daemon.pid
+daemon.log
+
+# Dependency vendor directory (we use go modules)
+vendor/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude
+.claude/
+
+# Env
+.env
+
+# notes
+/notes.txt
