@@ -1,5 +1,30 @@
 # Roadmap
 
+## ✓ v0.1 — core daemon + TUI
+
+Initial release: HTTP and TCP monitors, bubbletea dashboard and detail views, add/delete/pause/resume via IPC.
+
+## ✓ v0.5 — edit monitor
+
+Edit a monitor's name, target, type, interval, or timeout without deleting and re-adding. Accessible via `uptui edit NAME` on the CLI and the `e` key in the TUI (opens a pre-filled form).
+
+## ✓ v0.6 — config file ↔ CLI bidirectionality
+
+`~/.uptui/monitors.toml` is the canonical record of monitors. Fully interchangeable workflows:
+
+- Edit `monitors.toml` by hand → daemon picks it up within 5 seconds
+- Use `uptui add` / `uptui edit` / `uptui delete` → file stays in sync
+- Use TUI `a` / `e` / `d` → file stays in sync
+
+Key implementation details:
+- `monitors.toml` uses TOML `[[monitor]]` array-of-tables format
+- Daemon polls file mtime every 5s; on change, runs a reconciler that diffs desired vs running state
+- `history.json` replaces the old `db.json`; keyed by monitor name (stable across restarts)
+- Monitor identity uses `name` (string) as primary key — `ID int` removed
+- New IPC actions: `edit` (update settings + optional rename), `reload` (force re-read)
+
+---
+
 ## v0.2 — richer HTTP checks
 
 The current HTTP monitor does a plain `GET` and checks the status code. Most real-world use cases need more.
@@ -25,40 +50,14 @@ Alerts when a monitor transitions from up → down or down → up.
 - Configurable: alert only on down, only on recovery, or both
 - Cooldown period to avoid repeat alerts during a sustained outage
 
-## v0.5 — TUI improvements
+## v0.7 — TUI improvements
 
-- **Edit monitor** — change name, target, interval, or timeout without delete + re-add
 - **Sort and filter** — sort by name, status, or uptime; filter to show only down monitors
 - **Uptime columns** — add 7-day and 30-day uptime alongside the current 24-hour figure
 - **Log view** — scrollable full check history within the detail view
 - **Confirmation prompt** — "Delete monitor X? [y/N]" before destructive actions
 
-## v0.6 — configuration file
-
-A `~/.uptui/config.toml` (or YAML) for monitors and global settings, so the full setup can be version-controlled and reproduced on a new machine.
-
-```toml
-[settings]
-interval        = 60
-timeout         = 30
-notification    = "webhook"
-webhook_url     = "https://hooks.example.com/abc"
-
-[[monitor]]
-name     = "Production API"
-type     = "http"
-target   = "https://api.example.com/health"
-interval = 30
-
-[[monitor]]
-name   = "Postgres"
-type   = "tcp"
-target = "db.internal:5432"
-```
-
-The daemon watches the file for changes and applies them without a restart.
-
-## v0.7 — maintenance windows
+## v0.8 — maintenance windows
 
 - Schedule a monitor to be paused during a recurring window (e.g. every Sunday 02:00–04:00)
 - Show "maintenance" status in the TUI during the window
@@ -66,9 +65,8 @@ The daemon watches the file for changes and applies them without a restart.
 
 ## v1.0 — stability and polish
 
-- Replace the flat JSON store with an embedded SQLite database (`modernc.org/sqlite`) for efficient history queries at scale
+- Replace the flat JSON history store with an embedded SQLite database (`modernc.org/sqlite`) for efficient history queries at scale
 - `uptui export` — write a static HTML status page
-- `uptui import` — load monitors from a config file or JSON export
 - Shell completions (`uptui completion bash|zsh|fish`)
 - Proper structured logging in the daemon (`log/slog`)
 - Published binaries via GitHub Releases (cross-compiled for Linux, macOS, Windows)

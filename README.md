@@ -14,7 +14,7 @@ uptui                                          ● 3 up  ● 1 down
   ● DOWN  postgres:5432          TCP      -        95.0%   ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓
   ● UP    smtp.myapp.com:25      TCP     33 ms   100.0%    ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓
   ──────────────────────────────────────────────────────────────────
-  add  delete  pause/resume  ↑↓ navigate  ↵ detail  r refresh  quit
+  add  edit  delete  pause/resume  ↑↓ navigate  ↵ detail  r refresh  quit
 ```
 
 ## Install
@@ -55,12 +55,53 @@ uptui daemon                      Run the daemon in the foreground
 uptui stop                        Stop the background daemon
 uptui status                      Print current status to stdout
 uptui add TARGET [flags]          Add a monitor
+uptui edit NAME [flags]           Edit an existing monitor
 
 Flags for add:
   --name, -n NAME                 Display name  (default: TARGET)
   --type, -t http|tcp             Monitor type  (default: http)
   --interval, -i SECONDS          Check interval (default: 60, min: 10)
+
+Flags for edit:
+  --name NEWNAME                  Rename the monitor
+  --target URL                    New target URL or host:port
+  --type http|tcp                 Change monitor type
+  --interval SECONDS              New check interval
+  --timeout SECONDS               New timeout
 ```
+
+## Config file
+
+Monitors are stored in `~/.uptui/monitors.toml`. You can edit this file directly in any text editor — the daemon picks up changes within 5 seconds without restarting.
+
+```toml
+[[monitor]]
+name     = "GitHub"
+type     = "http"
+target   = "https://github.com"
+
+[[monitor]]
+name     = "Postgres"
+type     = "tcp"
+target   = "localhost:5432"
+interval = 30
+
+[[monitor]]
+name   = "Legacy API"
+type   = "http"
+target = "https://api.legacy.com/health"
+active = false
+```
+
+**Field defaults** — omitted when at their defaults to keep the file clean:
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| `interval` | `60` | Seconds between checks (min 10) |
+| `timeout` | `30` | Seconds before a check times out |
+| `active` | `true` | Set `false` to pause without deleting |
+
+The CLI (`uptui add`, `uptui edit`) and TUI (`a`, `e`) write back to this file automatically.
 
 ## TUI keybindings
 
@@ -72,6 +113,7 @@ Flags for add:
 | `↓` / `j` | Move cursor down |
 | `enter` | Open detail view |
 | `a` | Add a new monitor |
+| `e` | Edit selected monitor (opens pre-filled form) |
 | `d` | Delete selected monitor |
 | `p` | Pause / resume selected monitor |
 | `r` | Force refresh |
@@ -84,7 +126,7 @@ Flags for add:
 | `esc` / `backspace` | Back to dashboard |
 | `q` / `ctrl+c` | Quit |
 
-### Add form
+### Add / Edit form
 
 | Key | Action |
 |-----|--------|
@@ -108,29 +150,36 @@ All data is stored in `~/.uptui/`:
 
 | File | Contents |
 |------|----------|
-| `db.json` | Monitor config + check history (last 500 results per monitor) |
+| `monitors.toml` | Monitor definitions — the canonical config, hand-editable |
+| `history.json` | Check history (last 500 results per monitor, keyed by name) |
 | `daemon.pid` | PID of the running daemon (deleted on clean stop) |
 | `daemon.log` | Daemon stdout/stderr when auto-started |
 
-Data is written atomically (write to `.tmp`, then rename) so a crash mid-write cannot corrupt the database.
+Both `monitors.toml` and `history.json` are written atomically (write to `.tmp`, then rename) so a crash mid-write cannot corrupt them.
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  uptui (TUI process)                                        │
-│  bubbletea model ──── polls every 5s ────┐                  │
-└──────────────────────────────────────────┼──────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│  uptui (TUI process)                                            │
+│  bubbletea model ──── polls every 5s ────┐                      │
+└──────────────────────────────────────────┼──────────────────────┘
                                            │ JSON over TCP
                                            │ 127.0.0.1:29374
-┌──────────────────────────────────────────┼──────────────────┐
-│  uptui daemon                            │                  │
-│  IPC server ◄────────────────────────────┘                  │
-│      │                                                      │
-│  per-monitor goroutines                                     │
-│      │                                                      │
-│  checker (HTTP/TCP) ──► ~/.uptui/db.json                    │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────┼──────────────────────┐
+│  uptui daemon                            │                      │
+│  IPC server ◄────────────────────────────┘                      │
+│      │  writes on every mutation                                │
+│      ▼                                                          │
+│  ~/.uptui/monitors.toml ◄──── user edits (picked up in ≤5s)    │
+│      │  reconciler reads on start + mtime change               │
+│      ▼                                                          │
+│  per-monitor goroutines                                         │
+│      │                                                          │
+│  checker (HTTP/TCP) ──► ~/.uptui/history.json                   │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-The daemon is the single writer of `db.json`. The TUI never touches the file directly — it only communicates via IPC.
+The daemon is the **single writer** of both `monitors.toml` and `history.json`. All mutations (add, delete, edit, pause, resume) go through IPC; the daemon writes the config and then updates its runtime state.
+
+External edits to `monitors.toml` are detected by polling the file's modification time every 5 seconds and trigger a reconcile — goroutines are started, stopped, or restarted to match the new desired state.
