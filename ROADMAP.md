@@ -50,7 +50,11 @@ Alerts when a monitor transitions from up → down or down → up.
 - Configurable: alert only on down, only on recovery, or both
 - Cooldown period to avoid repeat alerts during a sustained outage
 
-## v0.7 — TUI improvements
+## ✓ v0.7 — themes (partial)
+
+7 built-in color themes selectable via `uptui theme NAME` or `~/.uptui/settings.toml`: `default`, `dracula`, `nord`, `solarized`, `monokai`, `gruvbox`, `monochrome`. Theme preference is stored separately from monitor config so the daemon never needs to know about it.
+
+## v0.7 — remaining TUI improvements
 
 - **Sort and filter** — sort by name, status, or uptime; filter to show only down monitors
 - **Uptime columns** — add 7-day and 30-day uptime alongside the current 24-hour figure

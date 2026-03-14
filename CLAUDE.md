@@ -12,10 +12,10 @@ The two processes communicate via line-delimited JSON over `127.0.0.1:29374`.
 ## Package layout
 
 ```
-cmd/uptui/main.go          CLI entry point (subcommands: daemon, stop, status, add, edit)
+cmd/uptui/main.go          CLI entry point (subcommands: daemon, stop, status, add, edit, theme)
 internal/
   models/models.go         Shared types: Monitor, Result, MonitorStatus, Status
-  config/config.go         TOML Load/Save for monitors.toml; custom encoder keeps file clean
+  config/config.go         TOML Load/Save for monitors.toml; Settings/LoadSettings/SaveSettings
   store/store.go           History-only JSON storage — the only place that writes history.json
   checker/checker.go       Stateless check functions: Check(ctx, Monitor) → Result
   daemon/daemon.go         Daemon: reconciler, watchConfig goroutine, implements ipc.Handler
@@ -24,7 +24,8 @@ internal/
     server.go              TCP IPC server (daemon side); defines Handler interface
     client.go              TCP IPC client (TUI side)
   tui/
-    styles.go              Lipgloss colour constants and style variables
+    theme.go               Theme struct, 7 built-in palettes, ParseTheme, ThemeNames, DefaultTheme
+    styles.go              Styles struct + NewStyles(Theme) + StatusStyle method
     app.go                 Bubbletea Model — Init / Update / View + all helper functions
 ```
 
@@ -45,7 +46,8 @@ main.go ──► runDaemon()
 
 main.go ──► runTUI()
               ensureDaemon()           // starts daemon subprocess if not running
-              tui.NewModel(ipcClient)
+              config.LoadSettings(~/.uptui/settings.toml) → theme
+              tui.NewModel(ipcClient, theme)
               bubbletea.NewProgram(model).Run()
                 ├── Init: fetchData (List RPC) + schedTick
                 ├── tickMsg every 5 s: fetchData again
@@ -67,6 +69,8 @@ go test ./internal/store/...    # single package
 ## Key design decisions
 
 **Config as source of truth**: `~/.uptui/monitors.toml` is the canonical record of monitors. The daemon is the **only writer** of that file. All mutations — add, delete, edit, pause, resume — go through IPC; the daemon writes the config file and then updates its runtime state. External edits are detected by polling the file's `mtime` every 5 seconds.
+
+**Settings file**: `~/.uptui/settings.toml` holds user preferences (currently: `theme`). It is owned by the TUI/CLI, not the daemon. `config.LoadSettings` / `config.SaveSettings` handle it; `SaveSettings` omits the file entirely when theme is `"default"`. The daemon never reads or writes this file.
 
 **Single writer for history**: Only the daemon writes `~/.uptui/history.json` (via `store.AddResult`). The TUI never touches either file; it communicates exclusively via IPC.
 
@@ -130,14 +134,16 @@ active = false    # written only when paused; omitted (defaults true) otherwise
 - `models.Status` values are lowercase strings (`"up"`, `"down"`, `"pending"`, `"paused"`).
 - `Monitor.Target` is the raw target string — a full URL for HTTP, `host:port` for TCP.
 - `Monitor.Name` is the unique key — never use a numeric ID.
-- Lipgloss styles all live in `tui/styles.go`. Don't create ad-hoc styles in `app.go`.
+- All lipgloss styles are accessed via `m.styles` (`Styles` struct in `tui/styles.go`). Don't create ad-hoc styles in `app.go`; add new fields to `Styles` and `NewStyles` instead.
+- Theme colors live in `tui/theme.go` (`Theme` struct). All 7 built-in palettes are defined there. `ParseTheme("")` returns `DefaultTheme()`.
 - The bubbletea model uses value semantics throughout (no pointer receivers). `Update` returns a new model copy.
 
 ## Test notes
 
 - `daemon/daemon_test.go` uses `package daemon` (white-box) to test the unexported `calcUptime`.
-- `tui/app_test.go` uses `package tui` (white-box) to test unexported helpers and view constants.
-- `config/config_test.go` uses `package config_test` (black-box) to test `Load`/`Save` round-trips, defaults, and edge cases.
+- `tui/app_test.go` uses `package tui` (white-box) to test unexported helpers and view constants. All `NewModel` calls pass `DefaultTheme()` as the second argument.
+- `tui/theme_test.go` uses `package tui` (white-box) to test `ParseTheme`, `ThemeNames`, `NewStyles`, and `StatusStyle`.
+- `config/config_test.go` uses `package config_test` (black-box) to test `Load`/`Save` round-trips, defaults, edge cases, and `LoadSettings`/`SaveSettings`.
 - IPC tests start a real server on a randomly-assigned port. There is a TOCTOU window between grabbing the port and the server binding to it; this is acceptable in tests.
 - TUI tests never connect to a real daemon. `dataMsg` values are injected directly into `model.Update()`.
 

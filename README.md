@@ -56,6 +56,8 @@ uptui stop                        Stop the background daemon
 uptui status                      Print current status to stdout
 uptui add TARGET [flags]          Add a monitor
 uptui edit NAME [flags]           Edit an existing monitor
+uptui theme                       Show current theme and available themes
+uptui theme NAME                  Set TUI color theme
 
 Flags for add:
   --name, -n NAME                 Display name  (default: TARGET)
@@ -135,6 +137,33 @@ The CLI (`uptui add`, `uptui edit`) and TUI (`a`, `e`) write back to this file a
 | `enter` | Next field / submit (on last field) |
 | `esc` | Cancel |
 
+## Themes
+
+7 built-in color themes, selectable via CLI or by editing `~/.uptui/settings.toml`:
+
+```bash
+uptui theme dracula       # set theme for this machine
+uptui theme               # show current theme and available names
+```
+
+Or edit `~/.uptui/settings.toml` directly:
+
+```toml
+theme = "nord"
+```
+
+| Name | Style |
+|------|-------|
+| `default` | ANSI bright terminal colors |
+| `dracula` | Purple/cyan/green/pink on dark |
+| `nord` | Arctic blues and snow on dark slate |
+| `solarized` | Earthy green/cyan on dark teal |
+| `monokai` | Vivid yellow/green/pink on near-black |
+| `gruvbox` | Warm oranges/greens on dark brown |
+| `monochrome` | Bold/dim only — works on any terminal |
+
+When `settings.toml` is absent or theme is `"default"`, ANSI colors are used.
+
 ## Monitor types
 
 | Type | Target format | Example |
@@ -151,6 +180,7 @@ All data is stored in `~/.uptui/`:
 | File | Contents |
 |------|----------|
 | `monitors.toml` | Monitor definitions — the canonical config, hand-editable |
+| `settings.toml` | User preferences: `theme` (written by `uptui theme NAME`) |
 | `history.json` | Check history (last 500 results per monitor, keyed by name) |
 | `daemon.pid` | PID of the running daemon (deleted on clean stop) |
 | `daemon.log` | Daemon stdout/stderr when auto-started |
