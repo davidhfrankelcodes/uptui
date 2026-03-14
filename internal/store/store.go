@@ -11,16 +11,14 @@ import (
 
 const maxHistory = 500
 
-type dbData struct {
-	Monitors []models.Monitor          `json:"monitors"`
-	History  map[int][]models.Result   `json:"history"`
-	NextID   int                       `json:"next_id"`
+type historyData struct {
+	History map[string][]models.Result `json:"history"`
 }
 
 type Store struct {
 	mu   sync.RWMutex
 	path string
-	data dbData
+	data historyData
 }
 
 func New(dir string) (*Store, error) {
@@ -28,20 +26,16 @@ func New(dir string) (*Store, error) {
 		return nil, err
 	}
 	s := &Store{
-		path: filepath.Join(dir, "db.json"),
-		data: dbData{
-			History: make(map[int][]models.Result),
-			NextID:  1,
+		path: filepath.Join(dir, "history.json"),
+		data: historyData{
+			History: make(map[string][]models.Result),
 		},
 	}
 	b, err := os.ReadFile(s.path)
 	if err == nil {
 		_ = json.Unmarshal(b, &s.data)
 		if s.data.History == nil {
-			s.data.History = make(map[int][]models.Result)
-		}
-		if s.data.NextID < 1 {
-			s.data.NextID = 1
+			s.data.History = make(map[string][]models.Result)
 		}
 	}
 	return s, nil
@@ -59,64 +53,43 @@ func (s *Store) save() error {
 	return os.Rename(tmp, s.path)
 }
 
-func (s *Store) AddMonitor(m models.Monitor) (models.Monitor, error) {
+// DeleteHistory removes all stored results for name.
+func (s *Store) DeleteHistory(name string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	m.ID = s.data.NextID
-	s.data.NextID++
-	s.data.Monitors = append(s.data.Monitors, m)
-	return m, s.save()
+	delete(s.data.History, name)
+	_ = s.save()
 }
 
-func (s *Store) DeleteMonitor(id int) error {
+// RenameHistory moves history from oldName to newName.
+func (s *Store) RenameHistory(oldName, newName string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for i, m := range s.data.Monitors {
-		if m.ID == id {
-			s.data.Monitors = append(s.data.Monitors[:i], s.data.Monitors[i+1:]...)
-			delete(s.data.History, id)
-			return s.save()
-		}
+	if h, ok := s.data.History[oldName]; ok {
+		s.data.History[newName] = h
+		delete(s.data.History, oldName)
+		_ = s.save()
 	}
-	return nil
 }
 
-func (s *Store) SetMonitorActive(id int, active bool) error {
+// AddResult appends a check result for the named monitor, capping at maxHistory.
+func (s *Store) AddResult(name string, r models.Result) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for i, m := range s.data.Monitors {
-		if m.ID == id {
-			s.data.Monitors[i].Active = active
-			return s.save()
-		}
-	}
-	return nil
-}
-
-func (s *Store) AddResult(monitorID int, r models.Result) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	history := s.data.History[monitorID]
+	history := s.data.History[name]
 	history = append(history, r)
 	if len(history) > maxHistory {
 		history = history[len(history)-maxHistory:]
 	}
-	s.data.History[monitorID] = history
+	s.data.History[name] = history
 	return s.save()
 }
 
-func (s *Store) GetMonitors() []models.Monitor {
+// GetHistory returns a copy of stored results for name (empty slice if none).
+func (s *Store) GetHistory(name string) []models.Result {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]models.Monitor, len(s.data.Monitors))
-	copy(out, s.data.Monitors)
-	return out
-}
-
-func (s *Store) GetHistory(monitorID int) []models.Result {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	h := s.data.History[monitorID]
+	h := s.data.History[name]
 	out := make([]models.Result, len(h))
 	copy(out, h)
 	return out

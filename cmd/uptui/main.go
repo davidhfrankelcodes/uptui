@@ -36,6 +36,8 @@ func main() {
 		runStatus()
 	case "add":
 		runAdd(os.Args[2:])
+	case "edit":
+		runEdit(os.Args[2:])
 	case "help", "--help", "-h":
 		printHelp()
 	default:
@@ -81,7 +83,6 @@ func ensureDaemon() error {
 	logPath := filepath.Join(dir, "daemon.log")
 	logFile, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		// Fall back to discarding output
 		logFile, _ = os.OpenFile(os.DevNull, os.O_WRONLY, 0)
 	}
 
@@ -107,6 +108,7 @@ func ensureDaemon() error {
 func runDaemon() {
 	dir := dataDir()
 	pidFile := filepath.Join(dir, "daemon.pid")
+	configFile := filepath.Join(dir, "monitors.toml")
 
 	// Detect if another instance is already running
 	client := ipc.NewClient(ipcAddr)
@@ -137,7 +139,7 @@ func runDaemon() {
 
 	fmt.Fprintf(os.Stderr, "uptui daemon listening on %s  (data: %s)\n", ipcAddr, dir)
 
-	d := daemon.New(s)
+	d := daemon.New(s, configFile)
 	if err := d.Run(ctx, ipcAddr); err != nil {
 		fmt.Fprintf(os.Stderr, "daemon: %v\n", err)
 		os.Exit(1)
@@ -191,15 +193,14 @@ func runStatus() {
 		return
 	}
 
-	fmt.Printf("%-4s  %-25s  %-5s  %-8s  %s\n", "ID", "NAME", "TYPE", "STATUS", "LATENCY")
-	fmt.Println(strings.Repeat("─", 60))
+	fmt.Printf("%-25s  %-5s  %-8s  %s\n", "NAME", "TYPE", "STATUS", "LATENCY")
+	fmt.Println(strings.Repeat("─", 55))
 	for _, ms := range monitors {
 		lat := "-"
 		if ms.Latency > 0 {
 			lat = fmt.Sprintf("%d ms", ms.Latency)
 		}
-		fmt.Printf("%-4d  %-25s  %-5s  %-8s  %s\n",
-			ms.Monitor.ID,
+		fmt.Printf("%-25s  %-5s  %-8s  %s\n",
 			truncateStr(ms.Monitor.Name, 25),
 			ms.Monitor.Type,
 			ms.Status,
@@ -223,7 +224,6 @@ func runAdd(args []string) {
 		Active:   true,
 	}
 
-	// Parse flags
 	remaining := []string{}
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -270,7 +270,78 @@ func runAdd(args []string) {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Printf("added monitor #%d: %s (%s)\n", ms.Monitor.ID, ms.Monitor.Name, ms.Monitor.Target)
+	fmt.Printf("added monitor: %s (%s)\n", ms.Monitor.Name, ms.Monitor.Target)
+}
+
+// ── edit ───────────────────────────────────────────────────────────────────────
+
+func runEdit(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "usage: uptui edit NAME [--name NEWNAME] [--target URL] [--type TYPE] [--interval N] [--timeout N]")
+		os.Exit(1)
+	}
+
+	oldName := args[0]
+	args = args[1:]
+
+	// Fetch current monitor to use as defaults
+	client := ipc.NewClient(ipcAddr)
+	monitors, err := client.List()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	var current *models.Monitor
+	for _, ms := range monitors {
+		if ms.Monitor.Name == oldName {
+			m := ms.Monitor
+			current = &m
+			break
+		}
+	}
+	if current == nil {
+		fmt.Fprintf(os.Stderr, "monitor %q not found\n", oldName)
+		os.Exit(1)
+	}
+
+	m := *current
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--name":
+			i++
+			if i < len(args) {
+				m.Name = args[i]
+			}
+		case "--target":
+			i++
+			if i < len(args) {
+				m.Target = args[i]
+			}
+		case "--type":
+			i++
+			if i < len(args) {
+				m.Type = models.MonitorType(args[i])
+			}
+		case "--interval":
+			i++
+			if i < len(args) {
+				fmt.Sscanf(args[i], "%d", &m.Interval)
+			}
+		case "--timeout":
+			i++
+			if i < len(args) {
+				fmt.Sscanf(args[i], "%d", &m.Timeout)
+			}
+		}
+	}
+
+	ms, err := client.Edit(oldName, m)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("updated monitor: %s (%s)\n", ms.Monitor.Name, ms.Monitor.Target)
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────────
@@ -294,12 +365,14 @@ func printHelp() {
 	fmt.Print(`uptui - uptime monitor daemon + TUI
 
 Usage:
-  uptui               open TUI (auto-starts daemon if needed)
-  uptui daemon        run daemon in foreground
-  uptui stop          stop the background daemon
-  uptui status        print monitor status to stdout
-  uptui add TARGET    add a monitor  [--name NAME] [--type http|tcp] [--interval N]
+  uptui                    open TUI (auto-starts daemon if needed)
+  uptui daemon             run daemon in foreground
+  uptui stop               stop the background daemon
+  uptui status             print monitor status to stdout
+  uptui add TARGET         add a monitor  [--name NAME] [--type http|tcp] [--interval N]
+  uptui edit NAME          edit a monitor [--name NEWNAME] [--target URL] [--type TYPE] [--interval N] [--timeout N]
 
-Data stored in: ~/.uptui/
+Config: ~/.uptui/monitors.toml  (edit by hand; daemon picks up changes within 5 s)
+Data:   ~/.uptui/
 `)
 }

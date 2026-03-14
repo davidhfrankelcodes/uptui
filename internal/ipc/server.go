@@ -14,9 +14,11 @@ import (
 type Handler interface {
 	GetAllStatus() []*models.MonitorStatus
 	AddMonitor(m models.Monitor) (*models.MonitorStatus, error)
-	DeleteMonitor(id int) error
-	PauseMonitor(id int) error
-	ResumeMonitor(id int) error
+	DeleteMonitor(name string) error
+	PauseMonitor(name string) error
+	ResumeMonitor(name string) error
+	EditMonitor(oldName string, m models.Monitor) (*models.MonitorStatus, error)
+	Reload() error
 }
 
 type Server struct {
@@ -88,19 +90,35 @@ func (s *Server) dispatch(req Request) Response {
 		return Response{OK: true, Monitor: ms}
 
 	case ActionDelete:
-		if err := s.handler.DeleteMonitor(req.ID); err != nil {
+		if err := s.handler.DeleteMonitor(req.Name); err != nil {
 			return Response{OK: false, Error: err.Error()}
 		}
 		return Response{OK: true}
 
 	case ActionPause:
-		if err := s.handler.PauseMonitor(req.ID); err != nil {
+		if err := s.handler.PauseMonitor(req.Name); err != nil {
 			return Response{OK: false, Error: err.Error()}
 		}
 		return Response{OK: true}
 
 	case ActionResume:
-		if err := s.handler.ResumeMonitor(req.ID); err != nil {
+		if err := s.handler.ResumeMonitor(req.Name); err != nil {
+			return Response{OK: false, Error: err.Error()}
+		}
+		return Response{OK: true}
+
+	case ActionEdit:
+		if req.Monitor == nil {
+			return Response{OK: false, Error: "monitor required"}
+		}
+		ms, err := s.handler.EditMonitor(req.OldName, *req.Monitor)
+		if err != nil {
+			return Response{OK: false, Error: err.Error()}
+		}
+		return Response{OK: true, Monitor: ms}
+
+	case ActionReload:
+		if err := s.handler.Reload(); err != nil {
 			return Response{OK: false, Error: err.Error()}
 		}
 		return Response{OK: true}

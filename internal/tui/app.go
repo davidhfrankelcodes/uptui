@@ -48,10 +48,12 @@ type Model struct {
 	// detail
 	selected *models.MonitorStatus
 
-	// add form
-	addInputs []textinput.Model
-	addFocus  int
-	addErr    string
+	// add/edit form
+	addInputs   []textinput.Model
+	addFocus    int
+	addErr      string
+	editMode    bool   // true when form is used for editing
+	editOldName string // the original name being edited
 }
 
 func NewModel(client *ipc.Client) Model {
@@ -125,10 +127,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.cursor >= len(m.monitors) {
 				m.cursor = len(m.monitors) - 1
 			}
-			// keep selected in sync for detail view
+			// keep selected in sync for detail view (match by Name)
 			if m.view == viewDetail && m.selected != nil {
 				for _, ms := range m.monitors {
-					if ms.Monitor.ID == m.selected.Monitor.ID {
+					if ms.Monitor.Name == m.selected.Monitor.Name {
 						m.selected = ms
 						break
 					}
@@ -177,6 +179,8 @@ func (m Model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.view = viewDetail
 		}
 	case "a":
+		m.editMode = false
+		m.editOldName = ""
 		for i := range m.addInputs {
 			m.addInputs[i].SetValue("")
 		}
@@ -185,12 +189,27 @@ func (m Model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.view = viewAdd
 		cmd := m.addInputs[0].Focus()
 		return m, cmd
+	case "e":
+		if m.cursor < len(m.monitors) {
+			ms := m.monitors[m.cursor]
+			m.editMode = true
+			m.editOldName = ms.Monitor.Name
+			m.addInputs[0].SetValue(ms.Monitor.Name)
+			m.addInputs[1].SetValue(string(ms.Monitor.Type))
+			m.addInputs[2].SetValue(ms.Monitor.Target)
+			m.addInputs[3].SetValue(fmt.Sprintf("%d", ms.Monitor.Interval))
+			m.addFocus = 0
+			m.addErr = ""
+			m.view = viewAdd
+			cmd := m.addInputs[0].Focus()
+			return m, cmd
+		}
 	case "d":
 		if m.cursor < len(m.monitors) {
-			id := m.monitors[m.cursor].Monitor.ID
+			name := m.monitors[m.cursor].Monitor.Name
 			c := m.client
 			return m, func() tea.Msg {
-				c.Delete(id)
+				c.Delete(name)
 				monitors, err := c.List()
 				return dataMsg{monitors: monitors, err: err}
 			}
@@ -199,13 +218,13 @@ func (m Model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.cursor < len(m.monitors) {
 			ms := m.monitors[m.cursor]
 			c := m.client
-			id := ms.Monitor.ID
+			name := ms.Monitor.Name
 			active := ms.Monitor.Active
 			return m, func() tea.Msg {
 				if active {
-					c.Pause(id)
+					c.Pause(name)
 				} else {
-					c.Resume(id)
+					c.Resume(name)
 				}
 				monitors, err := c.List()
 				return dataMsg{monitors: monitors, err: err}
@@ -229,7 +248,7 @@ func (m Model) updateDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// ── add form keys ──────────────────────────────────────────────────────────────
+// ── add/edit form keys ─────────────────────────────────────────────────────────
 
 func (m Model) updateAdd(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
@@ -237,6 +256,8 @@ func (m Model) updateAdd(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "esc":
 		m.addInputs[m.addFocus].Blur()
+		m.editMode = false
+		m.editOldName = ""
 		m.view = viewDashboard
 		return m, nil
 	case "tab", "down":
@@ -310,13 +331,20 @@ func (m Model) submitAdd() (tea.Model, tea.Cmd) {
 		Active:   true,
 	}
 
-	_, err := m.client.Add(mon)
+	var err error
+	if m.editMode {
+		_, err = m.client.Edit(m.editOldName, mon)
+	} else {
+		_, err = m.client.Add(mon)
+	}
 	if err != nil {
 		m.addErr = err.Error()
 		return m, nil
 	}
 
 	m.addInputs[m.addFocus].Blur()
+	m.editMode = false
+	m.editOldName = ""
 	m.view = viewDashboard
 	return m, fetchData(m.client)
 }
@@ -414,6 +442,7 @@ func (m Model) dashboardView() string {
 	sb.WriteString(styleBorder.Render(strings.Repeat("─", m.width)) + "\n")
 	footer := styleMuted.Render(" ") +
 		styleKeyHint.Render("a") + styleMuted.Render("dd  ") +
+		styleKeyHint.Render("e") + styleMuted.Render("dit  ") +
 		styleKeyHint.Render("d") + styleMuted.Render("elete  ") +
 		styleKeyHint.Render("p") + styleMuted.Render("ause/resume  ") +
 		styleKeyHint.Render("↑↓") + styleMuted.Render(" navigate  ") +
@@ -563,12 +592,16 @@ func (m Model) detailView() string {
 	return sb.String()
 }
 
-// ── add view ──────────────────────────────────────────────────────────────────
+// ── add/edit view ──────────────────────────────────────────────────────────────
 
 func (m Model) addView() string {
 	var sb strings.Builder
 
-	sb.WriteString(styleTitle.Render("Add Monitor") + "\n")
+	title := "Add Monitor"
+	if m.editMode {
+		title = "Edit Monitor"
+	}
+	sb.WriteString(styleTitle.Render(title) + "\n")
 	sb.WriteString(styleBorder.Render(strings.Repeat("─", 50)) + "\n\n")
 
 	labels := []string{

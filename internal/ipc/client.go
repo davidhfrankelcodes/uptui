@@ -71,17 +71,30 @@ func (c *Client) Add(m models.Monitor) (*models.MonitorStatus, error) {
 	return resp.Monitor, nil
 }
 
-func (c *Client) Delete(id int) error {
-	_, err := c.do(Request{Action: ActionDelete, ID: id})
+func (c *Client) Delete(name string) error {
+	_, err := c.do(Request{Action: ActionDelete, Name: name})
 	return err
 }
 
-func (c *Client) Pause(id int) error {
-	_, err := c.do(Request{Action: ActionPause, ID: id})
+func (c *Client) Pause(name string) error {
+	_, err := c.do(Request{Action: ActionPause, Name: name})
 	return err
 }
 
-func (c *Client) Resume(id int) error {
-	_, err := c.do(Request{Action: ActionResume, ID: id})
+func (c *Client) Resume(name string) error {
+	_, err := c.do(Request{Action: ActionResume, Name: name})
+	return err
+}
+
+func (c *Client) Edit(oldName string, m models.Monitor) (*models.MonitorStatus, error) {
+	resp, err := c.do(Request{Action: ActionEdit, OldName: oldName, Monitor: &m})
+	if err != nil {
+		return nil, err
+	}
+	return resp.Monitor, nil
+}
+
+func (c *Client) Reload() error {
+	_, err := c.do(Request{Action: ActionReload})
 	return err
 }

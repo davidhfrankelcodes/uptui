@@ -30,13 +30,13 @@ func mustModel(t *testing.T, m tea.Model) Model {
 	return got
 }
 
-func key(k tea.KeyType) tea.KeyMsg    { return tea.KeyMsg{Type: k} }
-func rune_(r rune) tea.KeyMsg         { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}} }
+func key(k tea.KeyType) tea.KeyMsg  { return tea.KeyMsg{Type: k} }
+func rune_(r rune) tea.KeyMsg       { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}} }
 
 var monitors3 = []*models.MonitorStatus{
-	{Monitor: models.Monitor{ID: 1, Name: "alpha"}, Status: models.StatusUp},
-	{Monitor: models.Monitor{ID: 2, Name: "beta"}, Status: models.StatusDown},
-	{Monitor: models.Monitor{ID: 3, Name: "gamma"}, Status: models.StatusPending},
+	{Monitor: models.Monitor{Name: "alpha"}, Status: models.StatusUp},
+	{Monitor: models.Monitor{Name: "beta"}, Status: models.StatusDown},
+	{Monitor: models.Monitor{Name: "gamma"}, Status: models.StatusPending},
 }
 
 // ── NewModel ──────────────────────────────────────────────────────────────────
@@ -258,12 +258,48 @@ func TestAOpensAdd(t *testing.T) {
 			t.Errorf("addInputs[%d].Value() = %q, want empty", i, inp.Value())
 		}
 	}
+	if got.editMode {
+		t.Error("editMode should be false after 'a'")
+	}
+}
+
+func TestEOpensEditPreFilled(t *testing.T) {
+	m := newTestModel()
+	m.monitors = monitors3
+	m.cursor = 0 // alpha
+
+	m2, _ := m.Update(rune_('e'))
+	got := mustModel(t, m2)
+
+	if got.view != viewAdd {
+		t.Errorf("view = %v, want add (edit mode)", got.view)
+	}
+	if !got.editMode {
+		t.Error("editMode should be true after 'e'")
+	}
+	if got.editOldName != "alpha" {
+		t.Errorf("editOldName = %q, want alpha", got.editOldName)
+	}
+	if got.addInputs[0].Value() != "alpha" {
+		t.Errorf("name field = %q, want alpha", got.addInputs[0].Value())
+	}
+}
+
+func TestENoopOnEmpty(t *testing.T) {
+	m := newTestModel()
+	// No monitors
+	m2, _ := m.Update(rune_('e'))
+	got := mustModel(t, m2)
+
+	if got.view != viewDashboard {
+		t.Errorf("e on empty: view = %v, want dashboard", got.view)
+	}
 }
 
 func TestEscFromDetail(t *testing.T) {
 	m := newTestModel()
 	m.view = viewDetail
-	m.selected = &models.MonitorStatus{Monitor: models.Monitor{ID: 1}}
+	m.selected = &models.MonitorStatus{Monitor: models.Monitor{Name: "test"}}
 
 	m2, _ := m.Update(key(tea.KeyEsc))
 	got := mustModel(t, m2)
@@ -283,18 +319,21 @@ func TestEscFromAdd(t *testing.T) {
 	if got.view != viewDashboard {
 		t.Errorf("esc from add: view = %v, want dashboard", got.view)
 	}
+	if got.editMode {
+		t.Error("editMode should be cleared after esc")
+	}
 }
 
 func TestDetailSelectedKeepsUpToDate(t *testing.T) {
 	m := newTestModel()
 	m.monitors = monitors3
 	m.view = viewDetail
-	m.selected = monitors3[0] // ID=1, name=alpha
+	m.selected = monitors3[0] // name="alpha"
 
 	// Receive fresh data where alpha is now down
 	updated := []*models.MonitorStatus{
-		{Monitor: models.Monitor{ID: 1, Name: "alpha"}, Status: models.StatusDown},
-		{Monitor: models.Monitor{ID: 2, Name: "beta"}, Status: models.StatusUp},
+		{Monitor: models.Monitor{Name: "alpha"}, Status: models.StatusDown},
+		{Monitor: models.Monitor{Name: "beta"}, Status: models.StatusUp},
 	}
 	m2, _ := m.Update(dataMsg{monitors: updated})
 	got := mustModel(t, m2)
@@ -585,9 +624,9 @@ func TestDetailViewRendersName(t *testing.T) {
 	m := newTestModel()
 	m.view = viewDetail
 	m.selected = &models.MonitorStatus{
-		Monitor:  models.Monitor{ID: 1, Name: "my-service", Type: models.HTTP, Target: "https://x.com", Interval: 60},
-		Status:   models.StatusUp,
-		Latency:  55,
+		Monitor:   models.Monitor{Name: "my-service", Type: models.HTTP, Target: "https://x.com", Interval: 60},
+		Status:    models.StatusUp,
+		Latency:   55,
 		LastCheck: time.Now().Add(-30 * time.Second),
 	}
 	got := m.detailView()
@@ -605,5 +644,16 @@ func TestAddViewRendersFields(t *testing.T) {
 		if !strings.Contains(got, label) {
 			t.Errorf("add view missing field label %q", label)
 		}
+	}
+}
+
+func TestEditViewRendersEditTitle(t *testing.T) {
+	m := newTestModel()
+	m.view = viewAdd
+	m.editMode = true
+	got := m.addView()
+
+	if !strings.Contains(got, "Edit Monitor") {
+		t.Errorf("edit view should say 'Edit Monitor', got: %q", got)
 	}
 }

@@ -14,11 +14,13 @@ import (
 // ── mock handler ──────────────────────────────────────────────────────────────
 
 type mockHandler struct {
-	mu        sync.Mutex
-	monitors  []*models.MonitorStatus
-	pausedIDs []int
-	resumedID []int
-	deletedID []int
+	mu           sync.Mutex
+	monitors     []*models.MonitorStatus
+	pausedNames  []string
+	resumedNames []string
+	deletedNames []string
+	editedOld    []string
+	reloaded     int
 }
 
 func (h *mockHandler) GetAllStatus() []*models.MonitorStatus {
@@ -32,18 +34,17 @@ func (h *mockHandler) GetAllStatus() []*models.MonitorStatus {
 func (h *mockHandler) AddMonitor(m models.Monitor) (*models.MonitorStatus, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	m.ID = len(h.monitors) + 1
 	ms := &models.MonitorStatus{Monitor: m, Status: models.StatusPending}
 	h.monitors = append(h.monitors, ms)
 	return ms, nil
 }
 
-func (h *mockHandler) DeleteMonitor(id int) error {
+func (h *mockHandler) DeleteMonitor(name string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.deletedID = append(h.deletedID, id)
+	h.deletedNames = append(h.deletedNames, name)
 	for i, ms := range h.monitors {
-		if ms.Monitor.ID == id {
+		if ms.Monitor.Name == name {
 			h.monitors = append(h.monitors[:i], h.monitors[i+1:]...)
 			break
 		}
@@ -51,17 +52,39 @@ func (h *mockHandler) DeleteMonitor(id int) error {
 	return nil
 }
 
-func (h *mockHandler) PauseMonitor(id int) error {
+func (h *mockHandler) PauseMonitor(name string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.pausedIDs = append(h.pausedIDs, id)
+	h.pausedNames = append(h.pausedNames, name)
 	return nil
 }
 
-func (h *mockHandler) ResumeMonitor(id int) error {
+func (h *mockHandler) ResumeMonitor(name string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.resumedID = append(h.resumedID, id)
+	h.resumedNames = append(h.resumedNames, name)
+	return nil
+}
+
+func (h *mockHandler) EditMonitor(oldName string, m models.Monitor) (*models.MonitorStatus, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.editedOld = append(h.editedOld, oldName)
+	for _, ms := range h.monitors {
+		if ms.Monitor.Name == oldName {
+			ms.Monitor = m
+			return ms, nil
+		}
+	}
+	ms := &models.MonitorStatus{Monitor: m, Status: models.StatusPending}
+	h.monitors = append(h.monitors, ms)
+	return ms, nil
+}
+
+func (h *mockHandler) Reload() error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.reloaded++
 	return nil
 }
 
@@ -135,11 +158,7 @@ func TestAdd(t *testing.T) {
 	if ms.Monitor.Name != "my-service" {
 		t.Errorf("name = %q, want %q", ms.Monitor.Name, "my-service")
 	}
-	if ms.Monitor.ID == 0 {
-		t.Error("expected non-zero ID")
-	}
 
-	// Verify it appears in List
 	h.mu.Lock()
 	count := len(h.monitors)
 	h.mu.Unlock()
@@ -170,16 +189,16 @@ func TestDelete(t *testing.T) {
 
 	ms, _ := client.Add(models.Monitor{Name: "x", Type: models.HTTP, Target: "http://x", Active: true})
 
-	if err := client.Delete(ms.Monitor.ID); err != nil {
+	if err := client.Delete(ms.Monitor.Name); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 
 	h.mu.Lock()
-	deleted := h.deletedID
+	deleted := h.deletedNames
 	h.mu.Unlock()
 
-	if len(deleted) != 1 || deleted[0] != ms.Monitor.ID {
-		t.Errorf("deletedID = %v, want [%d]", deleted, ms.Monitor.ID)
+	if len(deleted) != 1 || deleted[0] != ms.Monitor.Name {
+		t.Errorf("deletedNames = %v, want [%q]", deleted, ms.Monitor.Name)
 	}
 }
 
@@ -189,16 +208,16 @@ func TestPause(t *testing.T) {
 
 	ms, _ := client.Add(models.Monitor{Name: "x", Type: models.HTTP, Target: "http://x", Active: true})
 
-	if err := client.Pause(ms.Monitor.ID); err != nil {
+	if err := client.Pause(ms.Monitor.Name); err != nil {
 		t.Fatalf("Pause: %v", err)
 	}
 
 	h.mu.Lock()
-	paused := h.pausedIDs
+	paused := h.pausedNames
 	h.mu.Unlock()
 
-	if len(paused) != 1 || paused[0] != ms.Monitor.ID {
-		t.Errorf("pausedIDs = %v, want [%d]", paused, ms.Monitor.ID)
+	if len(paused) != 1 || paused[0] != ms.Monitor.Name {
+		t.Errorf("pausedNames = %v, want [%q]", paused, ms.Monitor.Name)
 	}
 }
 
@@ -208,16 +227,57 @@ func TestResume(t *testing.T) {
 
 	ms, _ := client.Add(models.Monitor{Name: "x", Type: models.HTTP, Target: "http://x", Active: true})
 
-	if err := client.Resume(ms.Monitor.ID); err != nil {
+	if err := client.Resume(ms.Monitor.Name); err != nil {
 		t.Fatalf("Resume: %v", err)
 	}
 
 	h.mu.Lock()
-	resumed := h.resumedID
+	resumed := h.resumedNames
 	h.mu.Unlock()
 
-	if len(resumed) != 1 || resumed[0] != ms.Monitor.ID {
-		t.Errorf("resumedID = %v, want [%d]", resumed, ms.Monitor.ID)
+	if len(resumed) != 1 || resumed[0] != ms.Monitor.Name {
+		t.Errorf("resumedNames = %v, want [%q]", resumed, ms.Monitor.Name)
+	}
+}
+
+func TestEdit(t *testing.T) {
+	client, h, cancel := startTestServer(t)
+	defer cancel()
+
+	client.Add(models.Monitor{Name: "original", Type: models.HTTP, Target: "http://x", Active: true})
+
+	updated := models.Monitor{Name: "renamed", Type: models.HTTP, Target: "http://x", Interval: 30, Active: true}
+	ms, err := client.Edit("original", updated)
+	if err != nil {
+		t.Fatalf("Edit: %v", err)
+	}
+	if ms.Monitor.Name != "renamed" {
+		t.Errorf("edited name = %q, want renamed", ms.Monitor.Name)
+	}
+
+	h.mu.Lock()
+	edited := h.editedOld
+	h.mu.Unlock()
+
+	if len(edited) != 1 || edited[0] != "original" {
+		t.Errorf("editedOld = %v, want [original]", edited)
+	}
+}
+
+func TestReload(t *testing.T) {
+	client, h, cancel := startTestServer(t)
+	defer cancel()
+
+	if err := client.Reload(); err != nil {
+		t.Fatalf("Reload: %v", err)
+	}
+
+	h.mu.Lock()
+	reloaded := h.reloaded
+	h.mu.Unlock()
+
+	if reloaded != 1 {
+		t.Errorf("reloaded = %d, want 1", reloaded)
 	}
 }
 

@@ -19,10 +19,9 @@ const (
 )
 
 type Monitor struct {
-	ID       int         `json:"id"`
 	Name     string      `json:"name"`
 	Type     MonitorType `json:"type"`
-	Target   string      `json:"target"` // URL for HTTP, host:port for TCP
+	Target   string      `json:"target"`   // URL for HTTP, host:port for TCP
 	Interval int         `json:"interval"` // seconds between checks
 	Timeout  int         `json:"timeout"`  // seconds before timeout
 	Active   bool        `json:"active"`
@@ -36,10 +35,10 @@ type Result struct {
 }
 
 type MonitorStatus struct {
-	Monitor   Monitor  `json:"monitor"`
-	Status    Status   `json:"status"`
-	Latency   int      `json:"latency_ms"`
+	Monitor   Monitor   `json:"monitor"`
+	Status    Status    `json:"status"`
+	Latency   int       `json:"latency_ms"`
 	LastCheck time.Time `json:"last_check"`
-	Uptime24h float64  `json:"uptime_24h"`
-	History   []Result `json:"history"` // last N results, oldest first
+	Uptime24h float64   `json:"uptime_24h"`
+	History   []Result  `json:"history"` // last N results, oldest first
 }
