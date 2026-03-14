@@ -10,6 +10,59 @@ import (
 	"uptui/internal/models"
 )
 
+// ── Settings ──────────────────────────────────────────────────────────────────
+
+// Settings holds user preferences stored in ~/.uptui/settings.toml.
+type Settings struct {
+	Theme string `toml:"theme"`
+}
+
+type tomlSettings struct {
+	Theme string `toml:"theme"`
+}
+
+// LoadSettings reads settings from path.
+// Returns Settings{Theme: "default"} if the file is missing or theme is empty.
+func LoadSettings(path string) (Settings, error) {
+	b, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return Settings{Theme: "default"}, nil
+	}
+	if err != nil {
+		return Settings{Theme: "default"}, err
+	}
+
+	var ts tomlSettings
+	if _, err := toml.Decode(string(b), &ts); err != nil {
+		return Settings{Theme: "default"}, fmt.Errorf("parse %s: %w", path, err)
+	}
+
+	s := Settings{Theme: ts.Theme}
+	if s.Theme == "" {
+		s.Theme = "default"
+	}
+	return s, nil
+}
+
+// SaveSettings writes settings to path atomically.
+// Writes an empty file when theme is "" or "default".
+func SaveSettings(path string, s Settings) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+
+	var buf bytes.Buffer
+	if s.Theme != "" && s.Theme != "default" {
+		buf.WriteString(fmt.Sprintf("theme = %q\n", s.Theme))
+	}
+
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, buf.Bytes(), 0644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
 const defaultInterval = 60
 const defaultTimeout = 30
 

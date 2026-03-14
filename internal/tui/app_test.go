@@ -18,7 +18,7 @@ import (
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 func newTestModel() Model {
-	return NewModel(ipc.NewClient("127.0.0.1:29374"))
+	return NewModel(ipc.NewClient("127.0.0.1:29374"), DefaultTheme())
 }
 
 func mustModel(t *testing.T, m tea.Model) Model {

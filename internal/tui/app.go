@@ -44,6 +44,7 @@ type Model struct {
 	loading  bool
 	width    int
 	height   int
+	styles   Styles
 
 	// detail
 	selected *models.MonitorStatus
@@ -56,7 +57,7 @@ type Model struct {
 	editOldName string // the original name being edited
 }
 
-func NewModel(client *ipc.Client) Model {
+func NewModel(client *ipc.Client, theme Theme) Model {
 	inputs := make([]textinput.Model, 4)
 
 	inputs[0] = textinput.New()
@@ -85,6 +86,7 @@ func NewModel(client *ipc.Client) Model {
 		loading:   true,
 		width:     80,
 		height:    24,
+		styles:    NewStyles(theme),
 	}
 }
 
@@ -381,25 +383,25 @@ func (m Model) dashboardView() string {
 		}
 	}
 
-	header := styleTitle.Render("uptui")
+	header := m.styles.Title.Render("uptui")
 	summary := ""
 	if len(m.monitors) > 0 {
 		parts := []string{}
 		if upCount > 0 {
-			parts = append(parts, styleUp.Render(fmt.Sprintf("● %d up", upCount)))
+			parts = append(parts, m.styles.Up.Render(fmt.Sprintf("● %d up", upCount)))
 		}
 		if downCount > 0 {
-			parts = append(parts, styleDown.Render(fmt.Sprintf("● %d down", downCount)))
+			parts = append(parts, m.styles.Down.Render(fmt.Sprintf("● %d down", downCount)))
 		}
 		if pendCount > 0 {
-			parts = append(parts, stylePending.Render(fmt.Sprintf("● %d pending", pendCount)))
+			parts = append(parts, m.styles.Pending.Render(fmt.Sprintf("● %d pending", pendCount)))
 		}
 		summary = strings.Join(parts, "  ")
 	}
 
 	headerLine := header + "  " + summary
 	sb.WriteString(headerLine + "\n")
-	sb.WriteString(styleBorder.Render(strings.Repeat("─", m.width)) + "\n")
+	sb.WriteString(m.styles.Border.Render(strings.Repeat("─", m.width)) + "\n")
 
 	// ── column widths ────────────────────────────────────────────────────────
 	// Fixed cols: status=9, type=5, latency=10, uptime=8, hist=20, gaps~8 = 60
@@ -412,25 +414,25 @@ func (m Model) dashboardView() string {
 	}
 
 	// ── column headers ───────────────────────────────────────────────────────
-	hStatus := padR(styleHeader.Render("STATUS"), 9)
-	hName := padR(styleHeader.Render("NAME"), nameW)
-	hType := padR(styleHeader.Render("TYPE"), 5)
-	hLat := padR(styleHeader.Render("LATENCY"), 10)
-	hUp := padR(styleHeader.Render("UPTIME"), 8)
-	hHist := styleHeader.Render("HISTORY")
+	hStatus := padR(m.styles.Header.Render("STATUS"), 9)
+	hName := padR(m.styles.Header.Render("NAME"), nameW)
+	hType := padR(m.styles.Header.Render("TYPE"), 5)
+	hLat := padR(m.styles.Header.Render("LATENCY"), 10)
+	hUp := padR(m.styles.Header.Render("UPTIME"), 8)
+	hHist := m.styles.Header.Render("HISTORY")
 	sb.WriteString(fmt.Sprintf("  %s  %s  %s  %s  %s  %s\n",
 		hStatus, hName, hType, hLat, hUp, hHist))
-	sb.WriteString(styleBorder.Render(strings.Repeat("─", m.width)) + "\n")
+	sb.WriteString(m.styles.Border.Render(strings.Repeat("─", m.width)) + "\n")
 
 	// ── rows ─────────────────────────────────────────────────────────────────
 	if m.loading {
-		sb.WriteString("\n  " + stylePending.Render("Connecting to daemon...") + "\n")
+		sb.WriteString("\n  " + m.styles.Pending.Render("Connecting to daemon...") + "\n")
 	} else if m.err != "" {
-		sb.WriteString("\n  " + styleError.Render("Error: "+m.err) + "\n")
-		sb.WriteString("  " + styleMuted.Render("Make sure the daemon is running: uptui daemon") + "\n")
+		sb.WriteString("\n  " + m.styles.Error.Render("Error: "+m.err) + "\n")
+		sb.WriteString("  " + m.styles.Muted.Render("Make sure the daemon is running: uptui daemon") + "\n")
 	} else if len(m.monitors) == 0 {
-		sb.WriteString("\n  " + styleMuted.Render("No monitors configured.") + "\n")
-		sb.WriteString("  " + styleMuted.Render("Press ") + styleKeyHint.Render("a") + styleMuted.Render(" to add your first monitor.") + "\n")
+		sb.WriteString("\n  " + m.styles.Muted.Render("No monitors configured.") + "\n")
+		sb.WriteString("  " + m.styles.Muted.Render("Press ") + m.styles.KeyHint.Render("a") + m.styles.Muted.Render(" to add your first monitor.") + "\n")
 	} else {
 		for i, ms := range m.monitors {
 			row := m.renderRow(ms, i == m.cursor, nameW)
@@ -439,16 +441,16 @@ func (m Model) dashboardView() string {
 	}
 
 	// ── footer ───────────────────────────────────────────────────────────────
-	sb.WriteString(styleBorder.Render(strings.Repeat("─", m.width)) + "\n")
-	footer := styleMuted.Render(" ") +
-		styleKeyHint.Render("a") + styleMuted.Render("dd  ") +
-		styleKeyHint.Render("e") + styleMuted.Render("dit  ") +
-		styleKeyHint.Render("d") + styleMuted.Render("elete  ") +
-		styleKeyHint.Render("p") + styleMuted.Render("ause/resume  ") +
-		styleKeyHint.Render("↑↓") + styleMuted.Render(" navigate  ") +
-		styleKeyHint.Render("↵") + styleMuted.Render(" detail  ") +
-		styleKeyHint.Render("r") + styleMuted.Render(" refresh  ") +
-		styleKeyHint.Render("q") + styleMuted.Render("uit")
+	sb.WriteString(m.styles.Border.Render(strings.Repeat("─", m.width)) + "\n")
+	footer := m.styles.Muted.Render(" ") +
+		m.styles.KeyHint.Render("a") + m.styles.Muted.Render("dd  ") +
+		m.styles.KeyHint.Render("e") + m.styles.Muted.Render("dit  ") +
+		m.styles.KeyHint.Render("d") + m.styles.Muted.Render("elete  ") +
+		m.styles.KeyHint.Render("p") + m.styles.Muted.Render("ause/resume  ") +
+		m.styles.KeyHint.Render("↑↓") + m.styles.Muted.Render(" navigate  ") +
+		m.styles.KeyHint.Render("↵") + m.styles.Muted.Render(" detail  ") +
+		m.styles.KeyHint.Render("r") + m.styles.Muted.Render(" refresh  ") +
+		m.styles.KeyHint.Render("q") + m.styles.Muted.Render("uit")
 	sb.WriteString(footer)
 
 	return sb.String()
@@ -457,10 +459,10 @@ func (m Model) dashboardView() string {
 func (m Model) renderRow(ms *models.MonitorStatus, selected bool, nameW int) string {
 	cursor := "  "
 	if selected {
-		cursor = styleCursor.Render("▶") + " "
+		cursor = m.styles.Cursor.Render("▶") + " "
 	}
 
-	st := statusStyle(string(ms.Status))
+	st := m.styles.StatusStyle(string(ms.Status))
 	dot := st.Render("●")
 	statusText := padR(st.Render(strings.ToUpper(string(ms.Status))), 7)
 
@@ -471,29 +473,29 @@ func (m Model) renderRow(ms *models.MonitorStatus, selected bool, nameW int) str
 
 	var latency string
 	if ms.Status == models.StatusDown || ms.Status == models.StatusPaused || ms.Latency == 0 {
-		latency = padR(styleMuted.Render("  -"), 10)
+		latency = padR(m.styles.Muted.Render("  -"), 10)
 	} else {
 		latency = padR(fmt.Sprintf("%d ms", ms.Latency), 10)
 	}
 
 	var uptime string
 	if ms.Uptime24h == 0 && ms.Status == models.StatusPending {
-		uptime = padR(styleMuted.Render("  -"), 8)
+		uptime = padR(m.styles.Muted.Render("  -"), 8)
 	} else {
 		pct := ms.Uptime24h
 		var u lipgloss.Style
 		switch {
 		case pct >= 99:
-			u = styleUp
+			u = m.styles.Up
 		case pct >= 90:
-			u = stylePending
+			u = m.styles.Pending
 		default:
-			u = styleDown
+			u = m.styles.Down
 		}
 		uptime = padR(u.Render(fmt.Sprintf("%.1f%%", pct)), 8)
 	}
 
-	hist := sparklineStatus(ms.History)
+	hist := m.sparklineStatus(ms.History)
 
 	return fmt.Sprintf("%s%s %s  %s  %s  %s  %s  %s",
 		cursor, dot, statusText, name, monType, latency, uptime, hist)
@@ -510,36 +512,36 @@ func (m Model) detailView() string {
 	var sb strings.Builder
 
 	// header
-	back := styleMuted.Render("← ")
-	name := styleBold.Render(ms.Monitor.Name)
-	st := statusStyle(string(ms.Status))
+	back := m.styles.Muted.Render("← ")
+	name := m.styles.Bold.Render(ms.Monitor.Name)
+	st := m.styles.StatusStyle(string(ms.Status))
 	statusBadge := st.Render("● " + strings.ToUpper(string(ms.Status)))
 	latBadge := ""
 	if ms.Latency > 0 {
-		latBadge = "  " + styleMuted.Render(fmt.Sprintf("%d ms", ms.Latency))
+		latBadge = "  " + m.styles.Muted.Render(fmt.Sprintf("%d ms", ms.Latency))
 	}
 	sb.WriteString(back + name + "\n")
-	sb.WriteString(styleBorder.Render(strings.Repeat("─", m.width)) + "\n")
+	sb.WriteString(m.styles.Border.Render(strings.Repeat("─", m.width)) + "\n")
 
 	// info line
-	target := styleMuted.Render("Target: ") + ms.Monitor.Target
-	interval := styleMuted.Render("  Interval: ") + fmt.Sprintf("%ds", ms.Monitor.Interval)
-	uptime := styleMuted.Render("  Uptime(24h): ")
-	uptimePct := styleUp.Render(fmt.Sprintf("%.2f%%", ms.Uptime24h))
+	target := m.styles.Muted.Render("Target: ") + ms.Monitor.Target
+	interval := m.styles.Muted.Render("  Interval: ") + fmt.Sprintf("%ds", ms.Monitor.Interval)
+	uptime := m.styles.Muted.Render("  Uptime(24h): ")
+	uptimePct := m.styles.Up.Render(fmt.Sprintf("%.2f%%", ms.Uptime24h))
 	if ms.Uptime24h < 90 {
-		uptimePct = styleDown.Render(fmt.Sprintf("%.2f%%", ms.Uptime24h))
+		uptimePct = m.styles.Down.Render(fmt.Sprintf("%.2f%%", ms.Uptime24h))
 	}
 	sb.WriteString("  " + statusBadge + latBadge + "  " + target + interval + uptime + uptimePct + "\n")
 
 	lastCheck := ""
 	if !ms.LastCheck.IsZero() {
 		ago := time.Since(ms.LastCheck).Round(time.Second)
-		lastCheck = "  " + styleMuted.Render("Last check: ") + humanDuration(ago) + " ago"
+		lastCheck = "  " + m.styles.Muted.Render("Last check: ") + humanDuration(ago) + " ago"
 	}
 	if lastCheck != "" {
 		sb.WriteString(lastCheck + "\n")
 	}
-	sb.WriteString(styleBorder.Render(strings.Repeat("─", m.width)) + "\n")
+	sb.WriteString(m.styles.Border.Render(strings.Repeat("─", m.width)) + "\n")
 
 	// latency chart
 	chartW := m.width - 10
@@ -551,15 +553,15 @@ func (m Model) detailView() string {
 	}
 
 	if len(ms.History) == 0 {
-		sb.WriteString("\n  " + styleMuted.Render("No check history yet.") + "\n")
+		sb.WriteString("\n  " + m.styles.Muted.Render("No check history yet.") + "\n")
 	} else {
-		sb.WriteString("\n  " + styleHeader.Render("Response time") + "\n")
-		sb.WriteString("  " + latencySparkline(ms.History, chartW) + "\n")
-		sb.WriteString(latencyStats(ms.History) + "\n")
+		sb.WriteString("\n  " + m.styles.Header.Render("Response time") + "\n")
+		sb.WriteString("  " + m.latencySparkline(ms.History, chartW) + "\n")
+		sb.WriteString(m.latencyStats(ms.History) + "\n")
 		sb.WriteString("\n")
 
 		// recent checks list
-		sb.WriteString("  " + styleHeader.Render("Recent checks") + "\n")
+		sb.WriteString("  " + m.styles.Header.Render("Recent checks") + "\n")
 		n := 12
 		start := 0
 		if len(ms.History) > n {
@@ -568,26 +570,26 @@ func (m Model) detailView() string {
 		recent := ms.History[start:]
 		for i := len(recent) - 1; i >= 0; i-- {
 			r := recent[i]
-			st := statusStyle(string(r.Status))
+			st := m.styles.StatusStyle(string(r.Status))
 			dot := st.Render("●")
-			ts := styleMuted.Render(r.Timestamp.Format("2006-01-02 15:04:05"))
+			ts := m.styles.Muted.Render(r.Timestamp.Format("2006-01-02 15:04:05"))
 			var lat string
 			if r.Latency > 0 {
 				lat = fmt.Sprintf("  %4d ms", r.Latency)
 			} else {
-				lat = styleMuted.Render("       -")
+				lat = m.styles.Muted.Render("       -")
 			}
 			msg := ""
 			if r.Message != "" {
-				msg = "  " + styleMuted.Render(r.Message)
+				msg = "  " + m.styles.Muted.Render(r.Message)
 			}
 			sb.WriteString(fmt.Sprintf("  %s  %s  %s%s\n", dot, ts, lat, msg))
 		}
 	}
 
-	sb.WriteString("\n" + styleBorder.Render(strings.Repeat("─", m.width)) + "\n")
-	sb.WriteString(styleKeyHint.Render("esc") + styleMuted.Render(" back  ") +
-		styleKeyHint.Render("q") + styleMuted.Render("uit"))
+	sb.WriteString("\n" + m.styles.Border.Render(strings.Repeat("─", m.width)) + "\n")
+	sb.WriteString(m.styles.KeyHint.Render("esc") + m.styles.Muted.Render(" back  ") +
+		m.styles.KeyHint.Render("q") + m.styles.Muted.Render("uit"))
 
 	return sb.String()
 }
@@ -601,8 +603,8 @@ func (m Model) addView() string {
 	if m.editMode {
 		title = "Edit Monitor"
 	}
-	sb.WriteString(styleTitle.Render(title) + "\n")
-	sb.WriteString(styleBorder.Render(strings.Repeat("─", 50)) + "\n\n")
+	sb.WriteString(m.styles.Title.Render(title) + "\n")
+	sb.WriteString(m.styles.Border.Render(strings.Repeat("─", 50)) + "\n\n")
 
 	labels := []string{
 		"Name      ",
@@ -612,16 +614,16 @@ func (m Model) addView() string {
 	}
 	hints := []string{
 		"",
-		styleMuted.Render("  (http or tcp)"),
+		m.styles.Muted.Render("  (http or tcp)"),
 		"",
-		styleMuted.Render("  seconds, min 10"),
+		m.styles.Muted.Render("  seconds, min 10"),
 	}
 
 	for i, input := range m.addInputs {
-		label := styleLabel.Render(labels[i])
+		label := m.styles.Label.Render(labels[i])
 		focused := ""
 		if m.addFocus == i {
-			focused = styleCursor.Render("▶") + " "
+			focused = m.styles.Cursor.Render("▶") + " "
 		} else {
 			focused = "  "
 		}
@@ -629,14 +631,14 @@ func (m Model) addView() string {
 	}
 
 	if m.addErr != "" {
-		sb.WriteString(styleError.Render("  ✗ "+m.addErr) + "\n\n")
+		sb.WriteString(m.styles.Error.Render("  ✗ "+m.addErr) + "\n\n")
 	}
 
-	sb.WriteString(styleMuted.Render("  ") +
-		styleKeyHint.Render("tab") + styleMuted.Render("/") +
-		styleKeyHint.Render("↑↓") + styleMuted.Render(" navigate  ") +
-		styleKeyHint.Render("enter") + styleMuted.Render(" next/submit  ") +
-		styleKeyHint.Render("esc") + styleMuted.Render(" cancel"))
+	sb.WriteString(m.styles.Muted.Render("  ") +
+		m.styles.KeyHint.Render("tab") + m.styles.Muted.Render("/") +
+		m.styles.KeyHint.Render("↑↓") + m.styles.Muted.Render(" navigate  ") +
+		m.styles.KeyHint.Render("enter") + m.styles.Muted.Render(" next/submit  ") +
+		m.styles.KeyHint.Render("esc") + m.styles.Muted.Render(" cancel"))
 
 	return sb.String()
 }
@@ -646,7 +648,7 @@ func (m Model) addView() string {
 var sparkBlocks = []rune{'▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
 
 // sparklineStatus renders last 24 results as colored status blocks.
-func sparklineStatus(history []models.Result) string {
+func (m Model) sparklineStatus(history []models.Result) string {
 	n := 24
 	start := 0
 	if len(history) > n {
@@ -657,26 +659,26 @@ func sparklineStatus(history []models.Result) string {
 	var sb strings.Builder
 	for i := 0; i < n; i++ {
 		if i >= len(results) {
-			sb.WriteString(styleMuted.Render("·"))
+			sb.WriteString(m.styles.Muted.Render("·"))
 			continue
 		}
 		r := results[i]
 		switch r.Status {
 		case models.StatusUp:
-			sb.WriteString(styleUp.Render("▓"))
+			sb.WriteString(m.styles.Up.Render("▓"))
 		case models.StatusDown:
-			sb.WriteString(styleDown.Render("▓"))
+			sb.WriteString(m.styles.Down.Render("▓"))
 		case models.StatusPaused:
-			sb.WriteString(stylePaused.Render("─"))
+			sb.WriteString(m.styles.Paused.Render("─"))
 		default:
-			sb.WriteString(styleMuted.Render("░"))
+			sb.WriteString(m.styles.Muted.Render("░"))
 		}
 	}
 	return sb.String()
 }
 
 // latencySparkline renders a wider latency chart for the detail view.
-func latencySparkline(history []models.Result, width int) string {
+func (m Model) latencySparkline(history []models.Result, width int) string {
 	n := width
 	start := 0
 	if len(history) > n {
@@ -696,9 +698,9 @@ func latencySparkline(history []models.Result, width int) string {
 	for _, r := range results {
 		switch r.Status {
 		case models.StatusDown:
-			sb.WriteString(styleDown.Render("▁"))
+			sb.WriteString(m.styles.Down.Render("▁"))
 		case models.StatusPaused:
-			sb.WriteString(stylePaused.Render("─"))
+			sb.WriteString(m.styles.Paused.Render("─"))
 		case models.StatusUp:
 			idx := int(math.Round(float64(r.Latency) / float64(maxLat) * 7))
 			if idx > 7 {
@@ -707,15 +709,15 @@ func latencySparkline(history []models.Result, width int) string {
 			if idx < 0 {
 				idx = 0
 			}
-			sb.WriteString(styleUp.Render(string(sparkBlocks[idx])))
+			sb.WriteString(m.styles.Up.Render(string(sparkBlocks[idx])))
 		default:
-			sb.WriteString(styleMuted.Render("░"))
+			sb.WriteString(m.styles.Muted.Render("░"))
 		}
 	}
 	return sb.String()
 }
 
-func latencyStats(history []models.Result) string {
+func (m Model) latencyStats(history []models.Result) string {
 	var latencies []int
 	for _, r := range history {
 		if r.Status == models.StatusUp && r.Latency > 0 {
@@ -737,9 +739,9 @@ func latencyStats(history []models.Result) string {
 	}
 	avg := sum / len(latencies)
 	return fmt.Sprintf("  %s%d ms  %s%d ms  %s%d ms",
-		styleMuted.Render("min: "), min,
-		styleMuted.Render("avg: "), avg,
-		styleMuted.Render("max: "), max)
+		m.styles.Muted.Render("min: "), min,
+		m.styles.Muted.Render("avg: "), avg,
+		m.styles.Muted.Render("max: "), max)
 }
 
 // padR right-pads s to width using visible rune count.

@@ -13,6 +13,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"uptui/internal/config"
 	"uptui/internal/daemon"
 	"uptui/internal/ipc"
 	"uptui/internal/models"
@@ -38,6 +39,8 @@ func main() {
 		runAdd(os.Args[2:])
 	case "edit":
 		runEdit(os.Args[2:])
+	case "theme":
+		runTheme(os.Args[2:])
 	case "help", "--help", "-h":
 		printHelp()
 	default:
@@ -55,8 +58,12 @@ func runTUI() {
 		fmt.Fprintln(os.Stderr, "Run 'uptui daemon' in a separate terminal.")
 	}
 
+	settingsPath := filepath.Join(dataDir(), "settings.toml")
+	settings, _ := config.LoadSettings(settingsPath)
+	theme, _ := tui.ParseTheme(settings.Theme)
+
 	client := ipc.NewClient(ipcAddr)
-	m := tui.NewModel(client)
+	m := tui.NewModel(client, theme)
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
@@ -344,6 +351,31 @@ func runEdit(args []string) {
 	fmt.Printf("updated monitor: %s (%s)\n", ms.Monitor.Name, ms.Monitor.Target)
 }
 
+// ── theme ──────────────────────────────────────────────────────────────────────
+
+func runTheme(args []string) {
+	settingsPath := filepath.Join(dataDir(), "settings.toml")
+
+	if len(args) == 0 {
+		settings, _ := config.LoadSettings(settingsPath)
+		fmt.Printf("current theme: %s\n", settings.Theme)
+		fmt.Printf("available:     %s\n", strings.Join(tui.ThemeNames, ", "))
+		return
+	}
+
+	name := args[0]
+	if _, err := tui.ParseTheme(name); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := config.SaveSettings(settingsPath, config.Settings{Theme: name}); err != nil {
+		fmt.Fprintf(os.Stderr, "error saving settings: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("theme set to %q\n", name)
+}
+
 // ── helpers ────────────────────────────────────────────────────────────────────
 
 func dataDir() string {
@@ -371,6 +403,8 @@ Usage:
   uptui status             print monitor status to stdout
   uptui add TARGET         add a monitor  [--name NAME] [--type http|tcp] [--interval N]
   uptui edit NAME          edit a monitor [--name NEWNAME] [--target URL] [--type TYPE] [--interval N] [--timeout N]
+  uptui theme              show current theme and available themes
+  uptui theme NAME         set theme (default, dracula, nord, solarized, monokai, gruvbox, monochrome)
 
 Config: ~/.uptui/monitors.toml  (edit by hand; daemon picks up changes within 5 s)
 Data:   ~/.uptui/

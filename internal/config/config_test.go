@@ -266,6 +266,73 @@ func TestSaveEmptyList(t *testing.T) {
 	}
 }
 
+// ── Settings tests ────────────────────────────────────────────────────────────
+
+func TestLoadSettingsMissingFile(t *testing.T) {
+	s, err := config.LoadSettings(filepath.Join(t.TempDir(), "settings.toml"))
+	if err != nil {
+		t.Fatalf("LoadSettings(missing): unexpected error: %v", err)
+	}
+	if s.Theme != "default" {
+		t.Errorf("Theme = %q, want default", s.Theme)
+	}
+}
+
+func TestLoadSettingsValidTOML(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.toml")
+	os.WriteFile(path, []byte("theme = \"nord\"\n"), 0644)
+
+	s, err := config.LoadSettings(path)
+	if err != nil {
+		t.Fatalf("LoadSettings: %v", err)
+	}
+	if s.Theme != "nord" {
+		t.Errorf("Theme = %q, want nord", s.Theme)
+	}
+}
+
+func TestLoadSettingsEmptyTheme(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.toml")
+	os.WriteFile(path, []byte(""), 0644)
+
+	s, err := config.LoadSettings(path)
+	if err != nil {
+		t.Fatalf("LoadSettings(empty): %v", err)
+	}
+	if s.Theme != "default" {
+		t.Errorf("Theme = %q, want default for empty file", s.Theme)
+	}
+}
+
+func TestSaveSettingsRoundTrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.toml")
+
+	if err := config.SaveSettings(path, config.Settings{Theme: "dracula"}); err != nil {
+		t.Fatalf("SaveSettings: %v", err)
+	}
+
+	s, err := config.LoadSettings(path)
+	if err != nil {
+		t.Fatalf("LoadSettings after Save: %v", err)
+	}
+	if s.Theme != "dracula" {
+		t.Errorf("Theme = %q, want dracula", s.Theme)
+	}
+}
+
+func TestSaveSettingsDefaultOmitsThemeKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.toml")
+
+	if err := config.SaveSettings(path, config.Settings{Theme: "default"}); err != nil {
+		t.Fatalf("SaveSettings(default): %v", err)
+	}
+
+	b, _ := os.ReadFile(path)
+	if contains(string(b), "theme") {
+		t.Error("saving default theme should produce empty file (no theme key)")
+	}
+}
+
 func contains(s, sub string) bool {
 	return strings.Contains(s, sub)
 }
