@@ -35,3 +35,6 @@ Thumbs.db
 # The binary
 /uptui
 /uptui.exe
+
+# Config for Docker
+/config/
