@@ -1,5 +1,21 @@
 # uptui — notes for Claude
 
+## Workflow (required for every task)
+
+For every change, no matter how small, follow these steps in order before declaring work done:
+
+1. **Write tests first (or alongside the code).** Every new function, behaviour change, or bug fix must have a corresponding test. Tests live in the same package as the code they cover — see *Test notes* below for conventions.
+
+2. **Run the full test suite and fix all failures.**
+   ```bash
+   /c/Program\ Files/Go/bin/go test ./...
+   ```
+   Do not stop until every package shows `ok`. If a pre-existing test breaks, fix it — do not skip or ignore it.
+
+3. **Resolve documentation drift.** After the code and tests pass, scan every `.md` file (`CLAUDE.md`, `README.md`, `ROADMAP.md`, `TESTS.md`) and update any section that is now inaccurate or incomplete. This includes package layouts, CLI command lists, keybinding tables, design-decision notes, and test notes.
+
+4. **Only then report back.** The finished response to the user should reflect a clean test run and up-to-date docs.
+
 ## What this is
 
 `uptui` is a Go application with two roles:
