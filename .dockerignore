@@ -1,0 +1,22 @@
+# Version control
+.git
+.gitignore
+
+# Docker files (no need to bake these into the image)
+Dockerfile
+docker-compose.yaml
+.dockerignore
+
+# Config / data directories (mounted at runtime, not baked in)
+config/
+
+# Docs and local artifacts
+*.md
+*.log
+*.pid
+.env
+
+# IDE / OS
+.vscode/
+.idea/
+*.DS_Store

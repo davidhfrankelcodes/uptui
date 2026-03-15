@@ -23,6 +23,37 @@ import (
 
 const ipcAddr = "127.0.0.1:29374"
 
+// dataDir returns the directory for runtime data (history.json, daemon.pid, daemon.log).
+// Override with UPTUI_DATA_DIR env var.
+func dataDir() string {
+	if d := os.Getenv("UPTUI_DATA_DIR"); d != "" {
+		return d
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = "."
+	}
+	return filepath.Join(home, ".uptui")
+}
+
+// configDir returns the directory for config files (monitors.toml, settings.toml).
+// Override with UPTUI_CONFIG_DIR env var; falls back to dataDir().
+func configDir() string {
+	if d := os.Getenv("UPTUI_CONFIG_DIR"); d != "" {
+		return d
+	}
+	return dataDir()
+}
+
+// listenAddr returns the address the IPC server should bind to.
+// Override with UPTUI_LISTEN_ADDR env var (e.g. "0.0.0.0:29374" in Docker).
+func listenAddr() string {
+	if a := os.Getenv("UPTUI_LISTEN_ADDR"); a != "" {
+		return a
+	}
+	return ipcAddr
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		runTUI()
@@ -58,7 +89,7 @@ func runTUI() {
 		fmt.Fprintln(os.Stderr, "Run 'uptui daemon' in a separate terminal.")
 	}
 
-	settingsPath := filepath.Join(dataDir(), "settings.toml")
+	settingsPath := filepath.Join(configDir(), "settings.toml")
 	settings, _ := config.LoadSettings(settingsPath)
 	theme, _ := tui.ParseTheme(settings.Theme)
 
@@ -114,8 +145,10 @@ func ensureDaemon() error {
 
 func runDaemon() {
 	dir := dataDir()
+	cfgDir := configDir()
 	pidFile := filepath.Join(dir, "daemon.pid")
-	configFile := filepath.Join(dir, "monitors.toml")
+	configFile := filepath.Join(cfgDir, "monitors.toml")
+	addr := listenAddr()
 
 	// Detect if another instance is already running
 	client := ipc.NewClient(ipcAddr)
@@ -123,6 +156,9 @@ func runDaemon() {
 		fmt.Fprintln(os.Stderr, "daemon is already running")
 		os.Exit(1)
 	}
+
+	os.MkdirAll(dir, 0755)
+	os.MkdirAll(cfgDir, 0755)
 
 	s, err := store.New(dir)
 	if err != nil {
@@ -144,10 +180,10 @@ func runDaemon() {
 		cancel()
 	}()
 
-	fmt.Fprintf(os.Stderr, "uptui daemon listening on %s  (data: %s)\n", ipcAddr, dir)
+	fmt.Fprintf(os.Stderr, "uptui daemon listening on %s  (config: %s  data: %s)\n", addr, cfgDir, dir)
 
 	d := daemon.New(s, configFile)
-	if err := d.Run(ctx, ipcAddr); err != nil {
+	if err := d.Run(ctx, addr); err != nil {
 		fmt.Fprintf(os.Stderr, "daemon: %v\n", err)
 		os.Exit(1)
 	}
@@ -354,7 +390,7 @@ func runEdit(args []string) {
 // ── theme ──────────────────────────────────────────────────────────────────────
 
 func runTheme(args []string) {
-	settingsPath := filepath.Join(dataDir(), "settings.toml")
+	settingsPath := filepath.Join(configDir(), "settings.toml")
 
 	if len(args) == 0 {
 		settings, _ := config.LoadSettings(settingsPath)
@@ -377,14 +413,6 @@ func runTheme(args []string) {
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────────
-
-func dataDir() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		home = "."
-	}
-	return filepath.Join(home, ".uptui")
-}
 
 func truncateStr(s string, max int) string {
 	if len(s) <= max {

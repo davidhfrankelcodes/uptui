@@ -88,7 +88,12 @@ go test ./internal/store/...    # single package
 
 **Config as source of truth**: `~/.uptui/monitors.toml` is the canonical record of monitors. The daemon is the **only writer** of that file. All mutations — add, delete, edit, pause, resume — go through IPC; the daemon writes the config file and then updates its runtime state. External edits are detected by polling the file's `mtime` every 5 seconds.
 
-**Settings file**: `~/.uptui/settings.toml` holds user preferences (currently: `theme`). It is owned by the TUI/CLI, not the daemon. `config.LoadSettings` / `config.SaveSettings` handle it; `SaveSettings` omits the file entirely when theme is `"default"`. The daemon never reads or writes this file.
+**Settings file**: `~/.uptui/settings.toml` holds user preferences (currently: `theme`). It is owned by the TUI/CLI, not the daemon. `config.LoadSettings` / `config.SaveSettings` handle it; `SaveSettings` omits the file entirely when theme is `"default"`. The daemon never reads or writes this file. Settings are resolved from `configDir()`, not `dataDir()`.
+
+**Environment variable overrides** (in `cmd/uptui/main.go`):
+- `UPTUI_DATA_DIR` — overrides `dataDir()` (history.json, daemon.pid, daemon.log)
+- `UPTUI_CONFIG_DIR` — overrides `configDir()` (monitors.toml, settings.toml); falls back to `dataDir()`
+- `UPTUI_LISTEN_ADDR` — overrides the daemon's IPC listen address (default `127.0.0.1:29374`); set to `0.0.0.0:29374` in Docker so the published port is reachable from the host
 
 **Single writer for history**: Only the daemon writes `~/.uptui/history.json` (via `store.AddResult`). The TUI never touches either file; it communicates exclusively via IPC.
 

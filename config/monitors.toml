@@ -1,0 +1,23 @@
+# uptui monitor configuration
+# The daemon picks up changes to this file within 5 seconds — no restart needed.
+#
+# Uncomment and edit the examples below, or use the CLI:
+#   docker compose exec daemon uptui add https://example.com
+#   docker compose exec daemon uptui add --type tcp --name "Postgres" host.docker.internal:5432
+
+# [[monitor]]
+# name     = "My Website"
+# type     = "http"
+# target   = "https://example.com"
+
+# [[monitor]]
+# name     = "My API"
+# type     = "http"
+# target   = "https://api.example.com/health"
+# interval = 30
+
+# [[monitor]]
+# name     = "My Database"
+# type     = "tcp"
+# target   = "host.docker.internal:5432"
+# interval = 30

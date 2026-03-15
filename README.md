@@ -19,6 +19,29 @@ uptui                                          ● 3 up  ● 1 down
 
 On terminals ≥ 100 columns wide, 7-day and 30-day uptime columns appear automatically.
 
+## Docker
+
+Run the daemon in a container with your config and history on the host:
+
+```bash
+# Start the daemon (detached)
+docker compose up -d
+
+# Edit config/monitors.toml to add monitors — daemon picks up changes in ≤ 5 s
+# Or use the CLI via exec:
+docker compose exec daemon uptui add https://github.com
+docker compose exec daemon uptui status
+
+# Run the TUI from your local machine (connects to the container via 127.0.0.1:29374)
+uptui
+```
+
+The `config/` directory is bind-mounted so you can edit `monitors.toml` directly.
+Check history is stored in the `uptui-data` named volume.
+
+**To reach hosts on your machine from inside the container** use `host.docker.internal`
+instead of `localhost` in your monitor targets (e.g. `host.docker.internal:5432`).
+
 ## Install
 
 Requires [Go 1.21+](https://go.dev/dl/).
@@ -196,6 +219,16 @@ All data is stored in `~/.uptui/`:
 | `daemon.log` | Daemon stdout/stderr when auto-started |
 
 Both `monitors.toml` and `history.json` are written atomically (write to `.tmp`, then rename) so a crash mid-write cannot corrupt them.
+
+### Environment variable overrides
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `UPTUI_DATA_DIR` | `~/.uptui` | Directory for `history.json`, `daemon.pid`, `daemon.log` |
+| `UPTUI_CONFIG_DIR` | same as `UPTUI_DATA_DIR` | Directory for `monitors.toml`, `settings.toml` |
+| `UPTUI_LISTEN_ADDR` | `127.0.0.1:29374` | Address the daemon IPC server binds to |
+
+The Docker setup sets `UPTUI_LISTEN_ADDR=0.0.0.0:29374` so the published port is reachable from the host.
 
 ## Architecture
 
