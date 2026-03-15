@@ -1,22 +1,23 @@
 services:
   daemon:
     build: .
-    restart: unless-stopped
+    restart: ${RESTART_POLICY:-unless-stopped}
     ports:
-      # Bind only to loopback so the IPC port is not reachable from the network.
-      # The TUI on the host connects to 127.0.0.1:29374 as normal.
-      - "127.0.0.1:29374:29374"
+      # Bind only to loopback by default so the IPC port is not reachable from
+      # the network.  The TUI on the host connects to UPTUI_HOST_ADDR:UPTUI_HOST_PORT.
+      # Set UPTUI_HOST_ADDR=0.0.0.0 (in .env) to expose on all interfaces.
+      - "${UPTUI_HOST_ADDR:-127.0.0.1}:${UPTUI_HOST_PORT:-29374}:${UPTUI_CONTAINER_PORT:-29374}"
     environment:
-      - UPTUI_LISTEN_ADDR=0.0.0.0:29374
-      - UPTUI_CONFIG_DIR=/config
-      - UPTUI_DATA_DIR=/data
+      - UPTUI_LISTEN_ADDR=${UPTUI_LISTEN_ADDR:-0.0.0.0:29374}
+      - UPTUI_CONFIG_DIR=${UPTUI_CONFIG_DIR:-/config}
+      - UPTUI_DATA_DIR=${UPTUI_DATA_DIR:-/data}
     volumes:
       # Config directory — place your monitors.toml here.
       # The daemon picks up edits within 5 seconds; no restart needed.
-      - ./config:/config
+      - ${UPTUI_CONFIG_MOUNT:-./config}:${UPTUI_CONFIG_DIR:-/config}
       # Data directory — check history, PID file, and daemon log.
       # Using a named volume keeps the data managed by Docker.
-      - uptui-data:/data
+      - uptui-data:${UPTUI_DATA_DIR:-/data}
 
 volumes:
   uptui-data:
