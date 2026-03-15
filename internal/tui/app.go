@@ -3,7 +3,9 @@ package tui
 import (
 	"fmt"
 	"math"
+	"net"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -73,6 +75,7 @@ type Model struct {
 	sortKey      int
 	filterKey    int
 	detailScroll int
+	listOffset   int // first visible row in the dashboard viewport
 
 	// delete confirmation
 	pendingDelete string // non-empty while awaiting y/N confirmation
@@ -138,6 +141,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.listOffset = clampListOffset(m.listOffset, m.cursor, dashboardRows(m.height))
 		return m, nil
 
 	case dataMsg:
@@ -154,6 +158,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.cursor >= len(visible) {
 				m.cursor = len(visible) - 1
 			}
+			m.listOffset = clampListOffset(m.listOffset, m.cursor, dashboardRows(m.height))
 			// keep selected in sync for detail view (match by Name)
 			if m.view == viewDetail && m.selected != nil {
 				for _, ms := range m.monitors {
@@ -216,10 +221,12 @@ func (m Model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.cursor > 0 {
 			m.cursor--
 		}
+		m.listOffset = clampListOffset(m.listOffset, m.cursor, dashboardRows(m.height))
 	case "down", "j":
 		if m.cursor < len(visible)-1 {
 			m.cursor++
 		}
+		m.listOffset = clampListOffset(m.listOffset, m.cursor, dashboardRows(m.height))
 	case "enter":
 		if m.cursor < len(visible) {
 			m.selected = visible[m.cursor]
@@ -282,6 +289,7 @@ func (m Model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else if m.cursor >= len(newVis) {
 			m.cursor = len(newVis) - 1
 		}
+		m.listOffset = clampListOffset(m.listOffset, m.cursor, dashboardRows(m.height))
 	case "r":
 		return m, fetchData(m.client)
 	}
@@ -405,6 +413,24 @@ func (m Model) submitAdd() (tea.Model, tea.Cmd) {
 		m.addErr = "target is required"
 		return m, nil
 	}
+	if monType == "http" {
+		if !strings.HasPrefix(target, "http://") && !strings.HasPrefix(target, "https://") {
+			m.addErr = "HTTP target must start with http:// or https://"
+			return m, nil
+		}
+	}
+	if monType == "tcp" {
+		_, portStr, splitErr := net.SplitHostPort(target)
+		if splitErr != nil {
+			m.addErr = "TCP target must be host:port (e.g. localhost:5432)"
+			return m, nil
+		}
+		port, _ := strconv.Atoi(portStr)
+		if port < 1 || port > 65535 {
+			m.addErr = "port must be between 1 and 65535"
+			return m, nil
+		}
+	}
 
 	interval := 60
 	if intervalStr != "" {
@@ -525,6 +551,12 @@ func (m Model) dashboardView() string {
 
 	// ── rows ─────────────────────────────────────────────────────────────────
 	visible := m.visibleMonitors()
+	rows := dashboardRows(m.height)
+	offset := clampListOffset(m.listOffset, m.cursor, rows)
+	end := offset + rows
+	if end > len(visible) {
+		end = len(visible)
+	}
 	if m.loading {
 		sb.WriteString("\n  " + m.styles.Pending.Render("Connecting to daemon...") + "\n")
 	} else if m.err != "" {
@@ -536,8 +568,8 @@ func (m Model) dashboardView() string {
 	} else if len(visible) == 0 {
 		sb.WriteString("\n  " + m.styles.Muted.Render("No monitors match the current filter.") + "\n")
 	} else {
-		for i, ms := range visible {
-			row := m.renderRow(ms, i == m.cursor, nameW, showExtUptime)
+		for i, ms := range visible[offset:end] {
+			row := m.renderRow(ms, offset+i == m.cursor, nameW, showExtUptime)
 			sb.WriteString(row + "\n")
 		}
 	}
@@ -954,6 +986,28 @@ func (m Model) renderUptimePct(pct float64, isPending bool, width int) string {
 		return padR(s, width)
 	}
 	return s
+}
+
+// dashboardRows returns the number of monitor rows that fit in the dashboard viewport.
+// Overhead: 4 lines (title, border, col-headers, border) + 2 lines (border, footer).
+func dashboardRows(height int) int {
+	n := height - 6
+	if n < 1 {
+		n = 1
+	}
+	return n
+}
+
+// clampListOffset returns the smallest valid offset that keeps cursor visible
+// within [offset, offset+pageSize).
+func clampListOffset(offset, cursor, pageSize int) int {
+	if cursor < offset {
+		return cursor
+	}
+	if cursor >= offset+pageSize {
+		return cursor - pageSize + 1
+	}
+	return offset
 }
 
 // detailPageSize returns the number of history rows to show in the detail view.

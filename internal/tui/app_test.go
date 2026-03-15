@@ -1099,6 +1099,151 @@ func TestDashboardViewSortFilterInFooter(t *testing.T) {
 	}
 }
 
+// ── dashboard viewport scroll ─────────────────────────────────────────────────
+
+func TestDashboardRows(t *testing.T) {
+	if dashboardRows(24) != 18 {
+		t.Errorf("dashboardRows(24) = %d, want 18", dashboardRows(24))
+	}
+	if dashboardRows(6) != 1 { // minimum 1
+		t.Errorf("dashboardRows(6) = %d, want 1", dashboardRows(6))
+	}
+}
+
+func TestClampListOffset(t *testing.T) {
+	// cursor above viewport → offset moves up
+	if got := clampListOffset(5, 3, 10); got != 3 {
+		t.Errorf("clampListOffset(5,3,10) = %d, want 3", got)
+	}
+	// cursor within viewport → offset unchanged
+	if got := clampListOffset(5, 7, 10); got != 5 {
+		t.Errorf("clampListOffset(5,7,10) = %d, want 5", got)
+	}
+	// cursor below viewport → offset scrolls down
+	if got := clampListOffset(0, 12, 10); got != 3 {
+		t.Errorf("clampListOffset(0,12,10) = %d, want 3", got)
+	}
+}
+
+func TestDashboardScrollsToFollowCursor(t *testing.T) {
+	// Build a list larger than the default viewport (height=24 → rows=18)
+	var many []*models.MonitorStatus
+	for i := 0; i < 30; i++ {
+		many = append(many, &models.MonitorStatus{
+			Monitor: models.Monitor{Name: fmt.Sprintf("svc-%02d", i)},
+			Status:  models.StatusUp,
+		})
+	}
+
+	m := newTestModel()
+	m.monitors = many
+	m.loading = false
+
+	// Move cursor to row 20 (beyond default viewport of 18)
+	for i := 0; i < 20; i++ {
+		m2, _ := m.Update(key(tea.KeyDown))
+		m = mustModel(t, m2)
+	}
+	if m.cursor != 20 {
+		t.Fatalf("cursor = %d, want 20", m.cursor)
+	}
+
+	// listOffset must have scrolled so cursor is visible
+	rows := dashboardRows(m.height)
+	if m.cursor < m.listOffset || m.cursor >= m.listOffset+rows {
+		t.Errorf("cursor %d not in viewport [%d, %d)", m.cursor, m.listOffset, m.listOffset+rows)
+	}
+
+	// The rendered dashboard must contain the cursor row's service name
+	got := m.dashboardView()
+	if !strings.Contains(got, "svc-20") {
+		t.Error("dashboardView should show the row at the cursor when scrolled")
+	}
+	// The very first service should be off-screen
+	if strings.Contains(got, "svc-00") {
+		t.Error("svc-00 should be scrolled off-screen")
+	}
+}
+
+// ── target format validation ──────────────────────────────────────────────────
+
+func TestSubmitHTTPNoProtocol(t *testing.T) {
+	m := newTestModel()
+	m.view = viewAdd
+	m.addFocus = 3
+
+	m.addInputs[0].SetValue("my service")
+	m.addInputs[1].SetValue("http")
+	m.addInputs[2].SetValue("example.com") // missing http://
+
+	m2, _ := m.Update(key(tea.KeyEnter))
+	got := mustModel(t, m2)
+
+	if got.addErr == "" {
+		t.Error("expected validation error for HTTP target without protocol")
+	}
+	if got.view != viewAdd {
+		t.Error("should stay on add view after validation error")
+	}
+}
+
+func TestSubmitTCPNoPort(t *testing.T) {
+	m := newTestModel()
+	m.view = viewAdd
+	m.addFocus = 3
+
+	m.addInputs[0].SetValue("my db")
+	m.addInputs[1].SetValue("tcp")
+	m.addInputs[2].SetValue("localhost") // missing port
+
+	m2, _ := m.Update(key(tea.KeyEnter))
+	got := mustModel(t, m2)
+
+	if got.addErr == "" {
+		t.Error("expected validation error for TCP target without port")
+	}
+}
+
+func TestSubmitTCPInvalidPort(t *testing.T) {
+	m := newTestModel()
+	m.view = viewAdd
+	m.addFocus = 3
+
+	m.addInputs[0].SetValue("my db")
+	m.addInputs[1].SetValue("tcp")
+	m.addInputs[2].SetValue("localhost:99999") // port out of range
+
+	m2, _ := m.Update(key(tea.KeyEnter))
+	got := mustModel(t, m2)
+
+	if got.addErr == "" {
+		t.Error("expected validation error for out-of-range port")
+	}
+}
+
+func TestSubmitTCPValidTarget(t *testing.T) {
+	m := newTestModel()
+	m.view = viewAdd
+	m.editMode = true // avoid real client.Add() call
+	m.editOldName = "old"
+	m.addFocus = 3
+
+	m.addInputs[0].SetValue("postgres")
+	m.addInputs[1].SetValue("tcp")
+	m.addInputs[2].SetValue("localhost:5432")
+	m.addInputs[3].SetValue("30")
+
+	m2, _ := m.Update(key(tea.KeyEnter))
+	got := mustModel(t, m2)
+
+	if got.addErr != "" {
+		t.Errorf("unexpected error for valid TCP target: %q", got.addErr)
+	}
+	if got.pendingEdit == nil {
+		t.Error("pendingEdit should be set for valid TCP target in edit mode")
+	}
+}
+
 func TestEditViewRendersEditTitle(t *testing.T) {
 	m := newTestModel()
 	m.view = viewAdd
