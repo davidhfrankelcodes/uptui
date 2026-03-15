@@ -1,7 +1,6 @@
 package ipc
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -31,13 +30,7 @@ func (c *Client) do(req Request) (Response, error) {
 	}
 
 	var resp Response
-	scanner := bufio.NewScanner(conn)
-	if scanner.Scan() {
-		if err := json.Unmarshal(scanner.Bytes(), &resp); err != nil {
-			return Response{}, fmt.Errorf("decode response: %w", err)
-		}
-	}
-	if err := scanner.Err(); err != nil {
+	if err := json.NewDecoder(conn).Decode(&resp); err != nil {
 		return Response{}, fmt.Errorf("read: %w", err)
 	}
 	if !resp.OK {

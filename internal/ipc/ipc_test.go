@@ -2,6 +2,7 @@ package ipc_test
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"sync"
 	"testing"
@@ -294,6 +295,50 @@ func TestPingFalse(t *testing.T) {
 	client := ipc.NewClient("127.0.0.1:19997") // nothing listening here
 	if client.Ping() {
 		t.Error("Ping() = true, want false (nothing listening)")
+	}
+}
+
+// TestListLargePayload verifies that List() succeeds when the response exceeds
+// 64 KB (the old bufio.Scanner limit). 50 monitors × 500 history entries
+// produces several MB of JSON.
+func TestListLargePayload(t *testing.T) {
+	client, h, cancel := startTestServer(t)
+	defer cancel()
+
+	history := make([]models.Result, 500)
+	now := time.Now()
+	for i := range history {
+		history[i] = models.Result{
+			Timestamp: now.Add(-time.Duration(i) * time.Minute),
+			Status:    models.StatusUp,
+			Latency:   42 + i,
+			Message:   "HTTP 200",
+		}
+	}
+
+	h.mu.Lock()
+	for i := 0; i < 50; i++ {
+		h.monitors = append(h.monitors, &models.MonitorStatus{
+			Monitor: models.Monitor{
+				Name:     fmt.Sprintf("monitor-%03d", i),
+				Type:     models.HTTP,
+				Target:   fmt.Sprintf("https://example-%03d.com", i),
+				Interval: 60,
+				Timeout:  30,
+				Active:   true,
+			},
+			Status:  models.StatusUp,
+			History: history,
+		})
+	}
+	h.mu.Unlock()
+
+	monitors, err := client.List()
+	if err != nil {
+		t.Fatalf("List with large payload: %v", err)
+	}
+	if len(monitors) != 50 {
+		t.Errorf("got %d monitors, want 50", len(monitors))
 	}
 }
 

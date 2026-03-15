@@ -1,7 +1,6 @@
 package ipc
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"log"
@@ -58,14 +57,13 @@ func (s *Server) Listen(ctx context.Context) error {
 
 func (s *Server) handleConn(conn net.Conn) {
 	defer conn.Close()
-	scanner := bufio.NewScanner(conn)
+	dec := json.NewDecoder(conn)
 	enc := json.NewEncoder(conn)
 
-	for scanner.Scan() {
+	for {
 		var req Request
-		if err := json.Unmarshal(scanner.Bytes(), &req); err != nil {
-			_ = enc.Encode(Response{OK: false, Error: "invalid json"})
-			continue
+		if err := dec.Decode(&req); err != nil {
+			return
 		}
 		resp := s.dispatch(req)
 		if err := enc.Encode(resp); err != nil {
