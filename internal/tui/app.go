@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -33,6 +34,18 @@ const (
 	viewAdd
 )
 
+// ── sort / filter keys ────────────────────────────────────────────────────────
+
+const (
+	sortByName   = 0
+	sortByStatus = 1
+	sortByUptime = 2
+
+	filterAll      = 0
+	filterDown     = 1
+	filterProblems = 2
+)
+
 // ── model ─────────────────────────────────────────────────────────────────────
 
 type Model struct {
@@ -55,6 +68,11 @@ type Model struct {
 	addErr      string
 	editMode    bool   // true when form is used for editing
 	editOldName string // the original name being edited
+
+	// sort / filter / scroll
+	sortKey      int
+	filterKey    int
+	detailScroll int
 
 	// delete confirmation
 	pendingDelete string // non-empty while awaiting y/N confirmation
@@ -129,11 +147,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.err = ""
 			m.monitors = msg.monitors
-			// clamp cursor
-			if len(m.monitors) == 0 {
+			// clamp cursor to visible list
+			visible := m.visibleMonitors()
+			if len(visible) == 0 {
 				m.cursor = 0
-			} else if m.cursor >= len(m.monitors) {
-				m.cursor = len(m.monitors) - 1
+			} else if m.cursor >= len(visible) {
+				m.cursor = len(visible) - 1
 			}
 			// keep selected in sync for detail view (match by Name)
 			if m.view == viewDetail && m.selected != nil {
@@ -188,6 +207,8 @@ func (m Model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	visible := m.visibleMonitors()
+
 	switch msg.String() {
 	case "q", "ctrl+c":
 		return m, tea.Quit
@@ -196,12 +217,13 @@ func (m Model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.cursor--
 		}
 	case "down", "j":
-		if m.cursor < len(m.monitors)-1 {
+		if m.cursor < len(visible)-1 {
 			m.cursor++
 		}
 	case "enter":
-		if m.cursor < len(m.monitors) {
-			m.selected = m.monitors[m.cursor]
+		if m.cursor < len(visible) {
+			m.selected = visible[m.cursor]
+			m.detailScroll = 0
 			m.view = viewDetail
 		}
 	case "a":
@@ -216,8 +238,8 @@ func (m Model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		cmd := m.addInputs[0].Focus()
 		return m, cmd
 	case "e":
-		if m.cursor < len(m.monitors) {
-			ms := m.monitors[m.cursor]
+		if m.cursor < len(visible) {
+			ms := visible[m.cursor]
 			m.editMode = true
 			m.editOldName = ms.Monitor.Name
 			m.addInputs[0].SetValue(ms.Monitor.Name)
@@ -231,12 +253,12 @@ func (m Model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 	case "d":
-		if m.cursor < len(m.monitors) {
-			m.pendingDelete = m.monitors[m.cursor].Monitor.Name
+		if m.cursor < len(visible) {
+			m.pendingDelete = visible[m.cursor].Monitor.Name
 		}
 	case "p":
-		if m.cursor < len(m.monitors) {
-			ms := m.monitors[m.cursor]
+		if m.cursor < len(visible) {
+			ms := visible[m.cursor]
 			c := m.client
 			name := ms.Monitor.Name
 			active := ms.Monitor.Active
@@ -249,6 +271,16 @@ func (m Model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				monitors, err := c.List()
 				return dataMsg{monitors: monitors, err: err}
 			}
+		}
+	case "s":
+		m.sortKey = (m.sortKey + 1) % 3
+	case "f":
+		m.filterKey = (m.filterKey + 1) % 3
+		newVis := m.visibleMonitors()
+		if len(newVis) == 0 {
+			m.cursor = 0
+		} else if m.cursor >= len(newVis) {
+			m.cursor = len(newVis) - 1
 		}
 	case "r":
 		return m, fetchData(m.client)
@@ -263,7 +295,25 @@ func (m Model) updateDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "q", "ctrl+c":
 		return m, tea.Quit
 	case "esc", "backspace":
+		m.detailScroll = 0
 		m.view = viewDashboard
+	case "down", "j":
+		if m.selected != nil && len(m.selected.History) > 0 {
+			pageSize := detailPageSize(m.height)
+			total := len(m.selected.History)
+			maxScroll := total - pageSize
+			if maxScroll < 0 {
+				maxScroll = 0
+			}
+			m.detailScroll++
+			if m.detailScroll > maxScroll {
+				m.detailScroll = maxScroll
+			}
+		}
+	case "up", "k":
+		if m.detailScroll > 0 {
+			m.detailScroll--
+		}
 	}
 	return m, nil
 }
@@ -442,8 +492,12 @@ func (m Model) dashboardView() string {
 	sb.WriteString(m.styles.Border.Render(strings.Repeat("─", m.width)) + "\n")
 
 	// ── column widths ────────────────────────────────────────────────────────
-	// Fixed cols: status=9, type=5, latency=10, uptime=8, hist=20, gaps~8 = 60
+	// Extended uptime (7d/30d) shown when terminal is wide enough
+	showExtUptime := m.width >= 100
 	nameW := m.width - 62
+	if showExtUptime {
+		nameW = m.width - 80 // extra 18 chars for 7d + 30d columns
+	}
 	if nameW < 12 {
 		nameW = 12
 	}
@@ -458,11 +512,19 @@ func (m Model) dashboardView() string {
 	hLat := padR(m.styles.Header.Render("LATENCY"), 10)
 	hUp := padR(m.styles.Header.Render("UPTIME"), 8)
 	hHist := m.styles.Header.Render("HISTORY")
-	sb.WriteString(fmt.Sprintf("  %s  %s  %s  %s  %s  %s\n",
-		hStatus, hName, hType, hLat, hUp, hHist))
+	if showExtUptime {
+		h7d := padR(m.styles.Header.Render("7D"), 7)
+		h30d := padR(m.styles.Header.Render("30D"), 7)
+		sb.WriteString(fmt.Sprintf("  %s  %s  %s  %s  %s  %s  %s  %s\n",
+			hStatus, hName, hType, hLat, hUp, h7d, h30d, hHist))
+	} else {
+		sb.WriteString(fmt.Sprintf("  %s  %s  %s  %s  %s  %s\n",
+			hStatus, hName, hType, hLat, hUp, hHist))
+	}
 	sb.WriteString(m.styles.Border.Render(strings.Repeat("─", m.width)) + "\n")
 
 	// ── rows ─────────────────────────────────────────────────────────────────
+	visible := m.visibleMonitors()
 	if m.loading {
 		sb.WriteString("\n  " + m.styles.Pending.Render("Connecting to daemon...") + "\n")
 	} else if m.err != "" {
@@ -471,14 +533,18 @@ func (m Model) dashboardView() string {
 	} else if len(m.monitors) == 0 {
 		sb.WriteString("\n  " + m.styles.Muted.Render("No monitors configured.") + "\n")
 		sb.WriteString("  " + m.styles.Muted.Render("Press ") + m.styles.KeyHint.Render("a") + m.styles.Muted.Render(" to add your first monitor.") + "\n")
+	} else if len(visible) == 0 {
+		sb.WriteString("\n  " + m.styles.Muted.Render("No monitors match the current filter.") + "\n")
 	} else {
-		for i, ms := range m.monitors {
-			row := m.renderRow(ms, i == m.cursor, nameW)
+		for i, ms := range visible {
+			row := m.renderRow(ms, i == m.cursor, nameW, showExtUptime)
 			sb.WriteString(row + "\n")
 		}
 	}
 
 	// ── footer ───────────────────────────────────────────────────────────────
+	sortNames := []string{"name", "status", "uptime"}
+	filterNames := []string{"all", "down", "problems"}
 	sb.WriteString(m.styles.Border.Render(strings.Repeat("─", m.width)) + "\n")
 	var footer string
 	if m.pendingDelete != "" {
@@ -492,8 +558,10 @@ func (m Model) dashboardView() string {
 			m.styles.KeyHint.Render("a") + m.styles.Muted.Render("dd  ") +
 			m.styles.KeyHint.Render("e") + m.styles.Muted.Render("dit  ") +
 			m.styles.KeyHint.Render("d") + m.styles.Muted.Render("elete  ") +
-			m.styles.KeyHint.Render("p") + m.styles.Muted.Render("ause/resume  ") +
-			m.styles.KeyHint.Render("↑↓") + m.styles.Muted.Render(" navigate  ") +
+			m.styles.KeyHint.Render("p") + m.styles.Muted.Render("ause  ") +
+			m.styles.KeyHint.Render("s") + m.styles.Muted.Render(":"+sortNames[m.sortKey]+"  ") +
+			m.styles.KeyHint.Render("f") + m.styles.Muted.Render(":"+filterNames[m.filterKey]+"  ") +
+			m.styles.KeyHint.Render("↑↓") + m.styles.Muted.Render(" nav  ") +
 			m.styles.KeyHint.Render("↵") + m.styles.Muted.Render(" detail  ") +
 			m.styles.KeyHint.Render("r") + m.styles.Muted.Render(" refresh  ") +
 			m.styles.KeyHint.Render("q") + m.styles.Muted.Render("uit")
@@ -503,7 +571,7 @@ func (m Model) dashboardView() string {
 	return sb.String()
 }
 
-func (m Model) renderRow(ms *models.MonitorStatus, selected bool, nameW int) string {
+func (m Model) renderRow(ms *models.MonitorStatus, selected bool, nameW int, showExtUptime bool) string {
 	cursor := "  "
 	if selected {
 		cursor = m.styles.Cursor.Render("▶") + " "
@@ -525,25 +593,17 @@ func (m Model) renderRow(ms *models.MonitorStatus, selected bool, nameW int) str
 		latency = padR(fmt.Sprintf("%d ms", ms.Latency), 10)
 	}
 
-	var uptime string
-	if ms.Uptime24h == 0 && ms.Status == models.StatusPending {
-		uptime = padR(m.styles.Muted.Render("  -"), 8)
-	} else {
-		pct := ms.Uptime24h
-		var u lipgloss.Style
-		switch {
-		case pct >= 99:
-			u = m.styles.Up
-		case pct >= 90:
-			u = m.styles.Pending
-		default:
-			u = m.styles.Down
-		}
-		uptime = padR(u.Render(fmt.Sprintf("%.1f%%", pct)), 8)
-	}
+	isPending := ms.Status == models.StatusPending
+	uptime := m.renderUptimePct(ms.Uptime24h, isPending, 8)
 
 	hist := m.sparklineStatus(ms.History)
 
+	if showExtUptime {
+		uptime7d := m.renderUptimePct(ms.Uptime7d, isPending, 7)
+		uptime30d := m.renderUptimePct(ms.Uptime30d, isPending, 7)
+		return fmt.Sprintf("%s%s %s  %s  %s  %s  %s  %s  %s  %s",
+			cursor, dot, statusText, name, monType, latency, uptime, uptime7d, uptime30d, hist)
+	}
 	return fmt.Sprintf("%s%s %s  %s  %s  %s  %s  %s",
 		cursor, dot, statusText, name, monType, latency, uptime, hist)
 }
@@ -573,12 +633,16 @@ func (m Model) detailView() string {
 	// info line
 	target := m.styles.Muted.Render("Target: ") + ms.Monitor.Target
 	interval := m.styles.Muted.Render("  Interval: ") + fmt.Sprintf("%ds", ms.Monitor.Interval)
-	uptime := m.styles.Muted.Render("  Uptime(24h): ")
 	uptimePct := m.styles.Up.Render(fmt.Sprintf("%.2f%%", ms.Uptime24h))
 	if ms.Uptime24h < 90 {
 		uptimePct = m.styles.Down.Render(fmt.Sprintf("%.2f%%", ms.Uptime24h))
 	}
-	sb.WriteString("  " + statusBadge + latBadge + "  " + target + interval + uptime + uptimePct + "\n")
+	uptime7dPct := m.renderUptimePct(ms.Uptime7d, ms.Status == models.StatusPending, 0)
+	uptime30dPct := m.renderUptimePct(ms.Uptime30d, ms.Status == models.StatusPending, 0)
+	uptime := m.styles.Muted.Render("  Uptime 24h: ") + uptimePct +
+		m.styles.Muted.Render("  7d: ") + uptime7dPct +
+		m.styles.Muted.Render("  30d: ") + uptime30dPct
+	sb.WriteString("  " + statusBadge + latBadge + "  " + target + interval + uptime + "\n")
 
 	lastCheck := ""
 	if !ms.LastCheck.IsZero() {
@@ -607,18 +671,31 @@ func (m Model) detailView() string {
 		sb.WriteString(m.latencyStats(ms.History) + "\n")
 		sb.WriteString("\n")
 
-		// recent checks list
-		sb.WriteString("  " + m.styles.Header.Render("Recent checks") + "\n")
-		n := 12
-		start := 0
-		if len(ms.History) > n {
-			start = len(ms.History) - n
+		// scrollable check history
+		sb.WriteString("  " + m.styles.Header.Render("Check history") + "\n")
+		total := len(ms.History)
+		pageSize := detailPageSize(m.height)
+		maxScroll := total - pageSize
+		if maxScroll < 0 {
+			maxScroll = 0
 		}
-		recent := ms.History[start:]
-		for i := len(recent) - 1; i >= 0; i-- {
-			r := recent[i]
-			st := m.styles.StatusStyle(string(r.Status))
-			dot := st.Render("●")
+		scroll := m.detailScroll
+		if scroll > maxScroll {
+			scroll = maxScroll
+		}
+		end := total - scroll
+		start := end - pageSize
+		if start < 0 {
+			start = 0
+		}
+		if scroll > 0 {
+			sb.WriteString(fmt.Sprintf("  %s\n",
+				m.styles.Muted.Render(fmt.Sprintf("▲ %d newer  k/↑", scroll))))
+		}
+		for i := end - 1; i >= start; i-- {
+			r := ms.History[i]
+			rst := m.styles.StatusStyle(string(r.Status))
+			dot := rst.Render("●")
 			ts := m.styles.Muted.Render(r.Timestamp.Format("2006-01-02 15:04:05"))
 			var lat string
 			if r.Latency > 0 {
@@ -632,10 +709,15 @@ func (m Model) detailView() string {
 			}
 			sb.WriteString(fmt.Sprintf("  %s  %s  %s%s\n", dot, ts, lat, msg))
 		}
+		if start > 0 {
+			sb.WriteString(fmt.Sprintf("  %s\n",
+				m.styles.Muted.Render(fmt.Sprintf("▼ %d older  j/↓", start))))
+		}
 	}
 
 	sb.WriteString("\n" + m.styles.Border.Render(strings.Repeat("─", m.width)) + "\n")
 	sb.WriteString(m.styles.KeyHint.Render("esc") + m.styles.Muted.Render(" back  ") +
+		m.styles.KeyHint.Render("j/k") + m.styles.Muted.Render(" scroll  ") +
 		m.styles.KeyHint.Render("q") + m.styles.Muted.Render("uit"))
 
 	return sb.String()
@@ -797,6 +879,91 @@ func (m Model) latencyStats(history []models.Result) string {
 		m.styles.Muted.Render("min: "), min,
 		m.styles.Muted.Render("avg: "), avg,
 		m.styles.Muted.Render("max: "), max)
+}
+
+// visibleMonitors returns the filtered and sorted slice of monitors for display.
+func (m Model) visibleMonitors() []*models.MonitorStatus {
+	out := make([]*models.MonitorStatus, 0, len(m.monitors))
+	for _, ms := range m.monitors {
+		switch m.filterKey {
+		case filterDown:
+			if ms.Status != models.StatusDown {
+				continue
+			}
+		case filterProblems:
+			if ms.Status == models.StatusUp || ms.Status == models.StatusPaused {
+				continue
+			}
+		}
+		out = append(out, ms)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		switch m.sortKey {
+		case sortByStatus:
+			oi, oj := statusOrder(out[i].Status), statusOrder(out[j].Status)
+			if oi != oj {
+				return oi < oj
+			}
+			return out[i].Monitor.Name < out[j].Monitor.Name
+		case sortByUptime:
+			if out[i].Uptime24h != out[j].Uptime24h {
+				return out[i].Uptime24h < out[j].Uptime24h
+			}
+			return out[i].Monitor.Name < out[j].Monitor.Name
+		default: // sortByName
+			return out[i].Monitor.Name < out[j].Monitor.Name
+		}
+	})
+	return out
+}
+
+// statusOrder maps Status to a sort order: down first, up last.
+func statusOrder(s models.Status) int {
+	switch s {
+	case models.StatusDown:
+		return 0
+	case models.StatusPending:
+		return 1
+	case models.StatusPaused:
+		return 2
+	default:
+		return 3
+	}
+}
+
+// renderUptimePct renders a padded uptime percentage. width=0 means no padding.
+func (m Model) renderUptimePct(pct float64, isPending bool, width int) string {
+	if isPending {
+		s := m.styles.Muted.Render("  -")
+		if width > 0 {
+			return padR(s, width)
+		}
+		return s
+	}
+	var u lipgloss.Style
+	switch {
+	case pct >= 99:
+		u = m.styles.Up
+	case pct >= 90:
+		u = m.styles.Pending
+	default:
+		u = m.styles.Down
+	}
+	s := u.Render(fmt.Sprintf("%.1f%%", pct))
+	if width > 0 {
+		return padR(s, width)
+	}
+	return s
+}
+
+// detailPageSize returns the number of history rows to show in the detail view.
+func detailPageSize(height int) int {
+	// Approximate overhead: title, borders, info, lastCheck, chart section, history header = ~13 lines
+	n := height - 13
+	if n < 5 {
+		n = 5
+	}
+	return n
 }
 
 // padR right-pads s to width using visible rune count.

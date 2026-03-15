@@ -14,8 +14,10 @@ uptui                                          ● 3 up  ● 1 down
   ● DOWN  postgres:5432          TCP      -        95.0%   ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓
   ● UP    smtp.myapp.com:25      TCP     33 ms   100.0%    ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓
   ──────────────────────────────────────────────────────────────────
-  add  edit  delete  pause/resume  ↑↓ navigate  ↵ detail  r refresh  quit
+  a dd  e dit  d elete  p ause  s:name  f:all  ↑↓ nav  ↵ detail  r refresh  q uit
 ```
+
+On terminals ≥ 100 columns wide, 7-day and 30-day uptime columns appear automatically.
 
 ## Install
 
@@ -118,13 +120,19 @@ The CLI (`uptui add`, `uptui edit`) and TUI (`a`, `e`) write back to this file a
 | `e` | Edit selected monitor (opens pre-filled form) |
 | `d` | Delete selected monitor (confirmation required) |
 | `p` | Pause / resume selected monitor |
+| `s` | Cycle sort order (name → status → uptime → name) |
+| `f` | Cycle filter (all → down → problems → all) |
 | `r` | Force refresh |
 | `q` / `ctrl+c` | Quit |
+
+The footer always shows the active sort and filter, e.g. `s:status  f:down`.
 
 ### Detail view
 
 | Key | Action |
 |-----|--------|
+| `↑` / `k` | Scroll to newer checks |
+| `↓` / `j` | Scroll to older checks |
 | `esc` / `backspace` | Back to dashboard |
 | `q` / `ctrl+c` | Quit |
 

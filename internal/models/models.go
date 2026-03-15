@@ -40,5 +40,7 @@ type MonitorStatus struct {
 	Latency   int       `json:"latency_ms"`
 	LastCheck time.Time `json:"last_check"`
 	Uptime24h float64   `json:"uptime_24h"`
+	Uptime7d  float64   `json:"uptime_7d"`
+	Uptime30d float64   `json:"uptime_30d"`
 	History   []Result  `json:"history"` // last N results, oldest first
 }

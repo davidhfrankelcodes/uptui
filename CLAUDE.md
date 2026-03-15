@@ -108,7 +108,7 @@ for each name in state not in desired:
 ```
 This is idempotent — safe to run repeatedly. Called from `Run()` (no lock, single-threaded startup) and from `watchConfig`/`Reload` (with `d.mu` write-locked).
 
-**History cap**: Each monitor keeps at most 500 results in memory and on disk (`store.maxHistory = 500`). The uptime percentage only considers results within a rolling 24-hour window (`calcUptime`). History is keyed by monitor name (`map[string][]models.Result`).
+**History cap**: Each monitor keeps at most 500 results in memory and on disk (`store.maxHistory = 500`). Uptime percentages are computed by `calcUptime(history, window)` for 24 h, 7 d, and 30 d windows. All three are stored in `MonitorStatus.Uptime24h/Uptime7d/Uptime30d`. History is keyed by monitor name (`map[string][]models.Result`).
 
 **Context-per-monitor**: Each running monitor goroutine receives its own `context.CancelFunc` stored in `daemon.state[name].cancel`. `PauseMonitor` calls that cancel to stop the goroutine; `ResumeMonitor` starts a new goroutine with a fresh context.
 
@@ -165,6 +165,8 @@ active = false    # written only when paused; omitted (defaults true) otherwise
 - IPC tests start a real server on a randomly-assigned port. There is a TOCTOU window between grabbing the port and the server binding to it; this is acceptable in tests.
 - TUI tests never connect to a real daemon. `dataMsg` values are injected directly into `model.Update()`.
 - Destructive/mutating actions use a two-step confirmation pattern: `pendingDelete string` (dashboard footer) and `pendingEdit *models.Monitor` (add/edit form footer). Tests cover prime → confirm → cancel for both.
+- Sort/filter state lives in `Model.sortKey` (0=name, 1=status, 2=uptime) and `Model.filterKey` (0=all, 1=down, 2=problems). `visibleMonitors()` applies filter then stable-sort. Cursor is clamped to visible list on every `dataMsg` and filter change.
+- Detail view scroll state lives in `Model.detailScroll` (offset from most-recent end, 0 = show newest). `detailPageSize(height)` computes page size; `j`/`↓` increments scroll, `k`/`↑` decrements, reset to 0 on enter/esc.
 
 ## Adding a new monitor type
 

@@ -109,6 +109,36 @@ func TestCalcUptimePendingNotCountedAsUp(t *testing.T) {
 	}
 }
 
+func TestCalcUptime7dWindow(t *testing.T) {
+	now := time.Now()
+	history := []models.Result{
+		// 8-day-old result — outside 7d window, should be excluded
+		{Timestamp: now.Add(-8 * 24 * time.Hour), Status: models.StatusDown},
+		// 3-day-old result — inside 7d window
+		{Timestamp: now.Add(-3 * 24 * time.Hour), Status: models.StatusUp},
+	}
+	got := calcUptime(history, 7*24*time.Hour)
+	if got != 100 {
+		t.Errorf("7d window: uptime = %.2f, want 100 (old down excluded)", got)
+	}
+}
+
+func TestCalcUptime30dWindow(t *testing.T) {
+	now := time.Now()
+	history := []models.Result{
+		// 31-day-old result — outside 30d window, should be excluded
+		{Timestamp: now.Add(-31 * 24 * time.Hour), Status: models.StatusDown},
+		// 15-day-old result — inside 30d window
+		{Timestamp: now.Add(-15 * 24 * time.Hour), Status: models.StatusUp},
+		// 1-day-old result — inside 30d window
+		{Timestamp: now.Add(-24 * time.Hour), Status: models.StatusUp},
+	}
+	got := calcUptime(history, 30*24*time.Hour)
+	if got != 100 {
+		t.Errorf("30d window: uptime = %.2f, want 100 (old down excluded)", got)
+	}
+}
+
 func TestCalcUptimeNarrowWindow(t *testing.T) {
 	now := time.Now()
 	history := []models.Result{

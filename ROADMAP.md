@@ -54,12 +54,12 @@ Alerts when a monitor transitions from up → down or down → up.
 
 7 built-in color themes selectable via `uptui theme NAME` or `~/.uptui/settings.toml`: `default`, `dracula`, `nord`, `solarized`, `monokai`, `gruvbox`, `monochrome`. Theme preference is stored separately from monitor config so the daemon never needs to know about it.
 
-## v0.7 — remaining TUI improvements
+## ✓ v0.7 — remaining TUI improvements
 
-- **Sort and filter** — sort by name, status, or uptime; filter to show only down monitors
-- **Uptime columns** — add 7-day and 30-day uptime alongside the current 24-hour figure
-- **Log view** — scrollable full check history within the detail view
-- **Confirmation prompt** — "Delete monitor X? [y/N]" before destructive actions
+- **Sort and filter** — `s` cycles sort (name/status/uptime); `f` cycles filter (all/down/problems). Active sort and filter shown in footer.
+- **Uptime columns** — 7-day and 30-day uptime displayed in dashboard (terminals ≥ 100 cols) and detail view, alongside the 24-hour figure.
+- **Scrollable check history** — detail view now pages through the full check log; `j`/`↓` older, `k`/`↑` newer, with count indicators.
+- **Confirmation prompt** — `y/N` prompt before delete and before saving edits.
 
 ## v0.8 — maintenance windows
 

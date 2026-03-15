@@ -125,6 +125,8 @@ func (d *Daemon) reconcileLocked(desired []models.Monitor) {
 				ms.Status = models.StatusPaused
 			}
 			ms.Uptime24h = calcUptime(history, 24*time.Hour)
+			ms.Uptime7d = calcUptime(history, 7*24*time.Hour)
+			ms.Uptime30d = calcUptime(history, 30*24*time.Hour)
 
 			mctx, mcancel := context.WithCancel(d.rootCtx)
 			d.state[m.Name] = &monitorState{ms: ms, cancel: mcancel}
@@ -217,6 +219,8 @@ func (d *Daemon) doCheck(ctx context.Context, m models.Monitor) {
 			st.ms.History = st.ms.History[len(st.ms.History)-500:]
 		}
 		st.ms.Uptime24h = calcUptime(st.ms.History, 24*time.Hour)
+		st.ms.Uptime7d = calcUptime(st.ms.History, 7*24*time.Hour)
+		st.ms.Uptime30d = calcUptime(st.ms.History, 30*24*time.Hour)
 	}
 	d.mu.Unlock()
 }
@@ -382,6 +386,8 @@ func (d *Daemon) EditMonitor(oldName string, m models.Monitor) (*models.MonitorS
 		Status:    models.StatusPending,
 		History:   history,
 		Uptime24h: calcUptime(history, 24*time.Hour),
+		Uptime7d:  calcUptime(history, 7*24*time.Hour),
+		Uptime30d: calcUptime(history, 30*24*time.Hour),
 	}
 	if len(history) > 0 {
 		last := history[len(history)-1]

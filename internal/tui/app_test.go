@@ -822,6 +822,283 @@ func TestAddViewRendersConfirmPrompt(t *testing.T) {
 	}
 }
 
+// ── sort / filter / visibleMonitors ──────────────────────────────────────────
+
+func TestSortCyclesOnS(t *testing.T) {
+	m := newTestModel()
+	m.monitors = monitors3
+
+	m2, _ := m.Update(rune_('s'))
+	got := mustModel(t, m2)
+	if got.sortKey != sortByStatus {
+		t.Errorf("after first s: sortKey = %d, want %d (sortByStatus)", got.sortKey, sortByStatus)
+	}
+
+	m3, _ := got.Update(rune_('s'))
+	got2 := mustModel(t, m3)
+	if got2.sortKey != sortByUptime {
+		t.Errorf("after second s: sortKey = %d, want %d (sortByUptime)", got2.sortKey, sortByUptime)
+	}
+
+	m4, _ := got2.Update(rune_('s'))
+	got3 := mustModel(t, m4)
+	if got3.sortKey != sortByName {
+		t.Errorf("after third s (wrap): sortKey = %d, want %d (sortByName)", got3.sortKey, sortByName)
+	}
+}
+
+func TestFilterCyclesOnF(t *testing.T) {
+	m := newTestModel()
+	m.monitors = monitors3
+
+	m2, _ := m.Update(rune_('f'))
+	got := mustModel(t, m2)
+	if got.filterKey != filterDown {
+		t.Errorf("after first f: filterKey = %d, want %d (filterDown)", got.filterKey, filterDown)
+	}
+
+	m3, _ := got.Update(rune_('f'))
+	got2 := mustModel(t, m3)
+	if got2.filterKey != filterProblems {
+		t.Errorf("after second f: filterKey = %d, want %d (filterProblems)", got2.filterKey, filterProblems)
+	}
+
+	m4, _ := got2.Update(rune_('f'))
+	got3 := mustModel(t, m4)
+	if got3.filterKey != filterAll {
+		t.Errorf("after third f (wrap): filterKey = %d, want %d (filterAll)", got3.filterKey, filterAll)
+	}
+}
+
+func TestVisibleMonitorsFilterAll(t *testing.T) {
+	m := newTestModel()
+	m.monitors = monitors3
+	m.filterKey = filterAll
+
+	vis := m.visibleMonitors()
+	if len(vis) != 3 {
+		t.Errorf("filterAll: len = %d, want 3", len(vis))
+	}
+}
+
+func TestVisibleMonitorsFilterDown(t *testing.T) {
+	m := newTestModel()
+	m.monitors = monitors3 // alpha=up, beta=down, gamma=pending
+	m.filterKey = filterDown
+
+	vis := m.visibleMonitors()
+	if len(vis) != 1 {
+		t.Errorf("filterDown: len = %d, want 1", len(vis))
+	}
+	if vis[0].Monitor.Name != "beta" {
+		t.Errorf("filterDown: name = %q, want beta", vis[0].Monitor.Name)
+	}
+}
+
+func TestVisibleMonitorsFilterProblems(t *testing.T) {
+	m := newTestModel()
+	m.monitors = monitors3 // alpha=up, beta=down, gamma=pending
+	m.filterKey = filterProblems
+
+	vis := m.visibleMonitors()
+	if len(vis) != 2 {
+		t.Errorf("filterProblems: len = %d, want 2 (down+pending)", len(vis))
+	}
+}
+
+func TestVisibleMonitorsSortByStatus(t *testing.T) {
+	m := newTestModel()
+	m.monitors = monitors3 // alpha=up, beta=down, gamma=pending
+	m.sortKey = sortByStatus
+
+	vis := m.visibleMonitors()
+	// down(beta) first, then pending(gamma), then up(alpha)
+	if vis[0].Monitor.Name != "beta" {
+		t.Errorf("sort by status [0]: name = %q, want beta (down)", vis[0].Monitor.Name)
+	}
+	if vis[1].Monitor.Name != "gamma" {
+		t.Errorf("sort by status [1]: name = %q, want gamma (pending)", vis[1].Monitor.Name)
+	}
+	if vis[2].Monitor.Name != "alpha" {
+		t.Errorf("sort by status [2]: name = %q, want alpha (up)", vis[2].Monitor.Name)
+	}
+}
+
+func TestStatusOrder(t *testing.T) {
+	if statusOrder(models.StatusDown) >= statusOrder(models.StatusPending) {
+		t.Error("down should sort before pending")
+	}
+	if statusOrder(models.StatusPending) >= statusOrder(models.StatusPaused) {
+		t.Error("pending should sort before paused")
+	}
+	if statusOrder(models.StatusPaused) >= statusOrder(models.StatusUp) {
+		t.Error("paused should sort before up")
+	}
+}
+
+// ── detail scroll ─────────────────────────────────────────────────────────────
+
+func TestDetailScrollDownAddsOlder(t *testing.T) {
+	m := newTestModel()
+	m.view = viewDetail
+	history := make([]models.Result, 20)
+	for i := range history {
+		history[i] = models.Result{Status: models.StatusUp, Latency: i + 1}
+	}
+	m.selected = &models.MonitorStatus{Monitor: models.Monitor{Name: "test"}, History: history}
+
+	m2, _ := m.Update(key(tea.KeyDown))
+	got := mustModel(t, m2)
+	if got.detailScroll != 1 {
+		t.Errorf("detailScroll = %d, want 1 after ↓", got.detailScroll)
+	}
+}
+
+func TestDetailScrollUpDecreases(t *testing.T) {
+	m := newTestModel()
+	m.view = viewDetail
+	m.detailScroll = 5
+	history := make([]models.Result, 20)
+	m.selected = &models.MonitorStatus{Monitor: models.Monitor{Name: "test"}, History: history}
+
+	m2, _ := m.Update(key(tea.KeyUp))
+	got := mustModel(t, m2)
+	if got.detailScroll != 4 {
+		t.Errorf("detailScroll = %d, want 4 after ↑", got.detailScroll)
+	}
+}
+
+func TestDetailScrollClampAtMax(t *testing.T) {
+	m := newTestModel() // height=24, pageSize = 24-13 = 11
+	m.view = viewDetail
+	history := make([]models.Result, 20)
+	m.selected = &models.MonitorStatus{Monitor: models.Monitor{Name: "test"}, History: history}
+	m.detailScroll = 8 // maxScroll = 20-11 = 9
+
+	m2, _ := m.Update(key(tea.KeyDown))
+	got := mustModel(t, m2)
+	// Scroll increases to 9 (maxScroll)
+	if got.detailScroll != 9 {
+		t.Errorf("detailScroll = %d, want 9 (maxScroll)", got.detailScroll)
+	}
+	// Another down: stays at 9
+	m3, _ := got.Update(key(tea.KeyDown))
+	got2 := mustModel(t, m3)
+	if got2.detailScroll != 9 {
+		t.Errorf("detailScroll = %d, want 9 (clamped at max)", got2.detailScroll)
+	}
+}
+
+func TestDetailScrollClampAtZero(t *testing.T) {
+	m := newTestModel()
+	m.view = viewDetail
+	m.detailScroll = 0
+	m.selected = &models.MonitorStatus{Monitor: models.Monitor{Name: "test"}}
+
+	m2, _ := m.Update(key(tea.KeyUp))
+	got := mustModel(t, m2)
+	if got.detailScroll != 0 {
+		t.Errorf("detailScroll = %d, want 0 (cannot go negative)", got.detailScroll)
+	}
+}
+
+func TestDetailScrollResetOnBack(t *testing.T) {
+	m := newTestModel()
+	m.view = viewDetail
+	m.detailScroll = 5
+	m.selected = &models.MonitorStatus{Monitor: models.Monitor{Name: "test"}}
+
+	m2, _ := m.Update(key(tea.KeyEsc))
+	got := mustModel(t, m2)
+	if got.detailScroll != 0 {
+		t.Errorf("detailScroll = %d, want 0 after esc", got.detailScroll)
+	}
+}
+
+func TestDetailScrollResetOnEnter(t *testing.T) {
+	m := newTestModel()
+	m.monitors = monitors3
+	m.cursor = 0
+	m.detailScroll = 7
+
+	m2, _ := m.Update(key(tea.KeyEnter))
+	got := mustModel(t, m2)
+	if got.detailScroll != 0 {
+		t.Errorf("detailScroll = %d, want 0 after enter (entering detail view)", got.detailScroll)
+	}
+}
+
+func TestDetailPageSize(t *testing.T) {
+	n := detailPageSize(24)
+	if n < 5 {
+		t.Errorf("detailPageSize(24) = %d, want >= 5", n)
+	}
+	// Minimum enforced
+	small := detailPageSize(5)
+	if small != 5 {
+		t.Errorf("detailPageSize(5) = %d, want 5 (minimum)", small)
+	}
+}
+
+func TestDetailViewScrollIndicator(t *testing.T) {
+	m := newTestModel() // height=24, pageSize=11
+	// 20 history items; maxScroll = 9; with scroll=5 both indicators should appear
+	history := make([]models.Result, 20)
+	for i := range history {
+		history[i] = models.Result{Status: models.StatusUp, Latency: i + 1}
+	}
+	m.view = viewDetail
+	m.selected = &models.MonitorStatus{
+		Monitor: models.Monitor{Name: "test"},
+		History: history,
+	}
+	m.detailScroll = 5
+
+	got := m.detailView()
+	if !strings.Contains(got, "newer") {
+		t.Error("scrolled view should show 'newer' indicator")
+	}
+	if !strings.Contains(got, "older") {
+		t.Error("scrolled view should show 'older' indicator")
+	}
+}
+
+func TestDetailViewNoScrollIndicatorAtTop(t *testing.T) {
+	m := newTestModel() // height=24, pageSize=11
+	history := make([]models.Result, 20)
+	for i := range history {
+		history[i] = models.Result{Status: models.StatusUp, Latency: i + 1}
+	}
+	m.view = viewDetail
+	m.selected = &models.MonitorStatus{
+		Monitor: models.Monitor{Name: "test"},
+		History: history,
+	}
+	// scroll=0: at most-recent end, should show "older" but no "newer"
+	m.detailScroll = 0
+	got := m.detailView()
+	if strings.Contains(got, "newer") {
+		t.Error("scroll=0 should not show 'newer' indicator")
+	}
+	if !strings.Contains(got, "older") {
+		t.Error("scroll=0 with 20 items should show 'older' indicator")
+	}
+}
+
+func TestDashboardViewSortFilterInFooter(t *testing.T) {
+	m := newTestModel()
+	m.loading = false
+	m.monitors = monitors3
+	got := m.dashboardView()
+	// Footer should contain current sort and filter hints
+	if !strings.Contains(got, "name") {
+		t.Error("footer should contain current sort (name)")
+	}
+	if !strings.Contains(got, "all") {
+		t.Error("footer should contain current filter (all)")
+	}
+}
+
 func TestEditViewRendersEditTitle(t *testing.T) {
 	m := newTestModel()
 	m.view = viewAdd

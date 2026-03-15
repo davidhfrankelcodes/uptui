@@ -90,7 +90,7 @@ Pattern matching is a substring/regex match on the test function name, so `-run 
 - Checker: HTTP up/down, redirects, cancelled context, TCP up/down
 - Daemon: uptime calculation over a 24-hour rolling window
 - IPC: all actions (list, add, delete, pause, resume, edit, reload) over a real TCP socket
-- TUI model: navigation, view switching, form validation, delete/edit confirmation flow, sparklines, all 7 themes
+- TUI model: navigation, view switching, form validation, delete/edit confirmation flow, sparklines, all 7 themes, sort/filter cycling, `visibleMonitors` filtering, detail-view scroll (j/k, clamp, reset), scroll indicators
 
 **Not covered:**
 - `cmd/uptui` (`main.go`) — no test file; CLI behaviour is exercised manually
