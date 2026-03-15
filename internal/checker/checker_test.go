@@ -195,6 +195,33 @@ func TestCheckTCPTimeout(t *testing.T) {
 	_ = l
 }
 
+func TestCheckPortTypeAlias(t *testing.T) {
+	// "port" is a legacy alias for "tcp" — must behave identically
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	go func() {
+		for {
+			conn, err := l.Accept()
+			if err != nil {
+				return
+			}
+			conn.Close()
+		}
+	}()
+
+	result := checker.Check(context.Background(), models.Monitor{
+		Type:    "port",
+		Target:  l.Addr().String(),
+		Timeout: 5,
+	})
+	if result.Status != models.StatusUp {
+		t.Errorf("port alias: status = %q, want up; message: %s", result.Status, result.Message)
+	}
+}
+
 func TestCheckUnknownType(t *testing.T) {
 	result := checker.Check(context.Background(), models.Monitor{
 		Type:    "icmp",

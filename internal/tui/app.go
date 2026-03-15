@@ -405,6 +405,9 @@ func (m Model) submitAdd() (tea.Model, tea.Cmd) {
 	if monType == "" {
 		monType = "http"
 	}
+	if monType == "port" {
+		monType = "tcp" // normalize legacy alias
+	}
 	if monType != "http" && monType != "tcp" {
 		m.addErr = "type must be http or tcp"
 		return m, nil

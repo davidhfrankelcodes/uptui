@@ -1167,6 +1167,33 @@ func TestDashboardScrollsToFollowCursor(t *testing.T) {
 
 // ── target format validation ──────────────────────────────────────────────────
 
+func TestSubmitPortTypeNormalized(t *testing.T) {
+	// "port" is a legacy alias for "tcp" — the form should accept it and normalize.
+	m := newTestModel()
+	m.view = viewAdd
+	m.editMode = true // avoid real client call
+	m.editOldName = "old"
+	m.addFocus = 3
+
+	m.addInputs[0].SetValue("ssh")
+	m.addInputs[1].SetValue("port") // legacy alias
+	m.addInputs[2].SetValue("localhost:22")
+	m.addInputs[3].SetValue("30")
+
+	m2, _ := m.Update(key(tea.KeyEnter))
+	got := mustModel(t, m2)
+
+	if got.addErr != "" {
+		t.Errorf("unexpected error for 'port' type alias: %q", got.addErr)
+	}
+	if got.pendingEdit == nil {
+		t.Fatal("pendingEdit should be set")
+	}
+	if string(got.pendingEdit.Type) != "tcp" {
+		t.Errorf("pendingEdit.Type = %q, want tcp (normalized from port)", got.pendingEdit.Type)
+	}
+}
+
 func TestSubmitHTTPNoProtocol(t *testing.T) {
 	m := newTestModel()
 	m.view = viewAdd

@@ -111,6 +111,9 @@ func Load(path string) ([]models.Monitor, error) {
 		if m.Type == "" {
 			m.Type = models.HTTP
 		}
+		if m.Type == "port" {
+			m.Type = models.TCP // normalize legacy alias
+		}
 		if m.Interval < 10 {
 			m.Interval = defaultInterval
 		}

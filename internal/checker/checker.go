@@ -24,7 +24,7 @@ func Check(ctx context.Context, m models.Monitor) models.Result {
 	switch m.Type {
 	case models.HTTP:
 		return checkHTTP(ctx, m, start)
-	case models.TCP:
+	case models.TCP, "port": // "port" is a legacy alias for "tcp"
 		return checkTCP(ctx, m, start)
 	default:
 		return models.Result{

@@ -145,6 +145,29 @@ target = "localhost:9000"
 	}
 }
 
+func TestLoadPortTypeNormalized(t *testing.T) {
+	// Legacy monitors.toml may use type="port"; Load must normalize it to "tcp".
+	toml := `
+[[monitor]]
+name   = "ssh"
+type   = "port"
+target = "localhost:22"
+`
+	path := filepath.Join(t.TempDir(), "monitors.toml")
+	os.WriteFile(path, []byte(toml), 0644)
+
+	monitors, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(monitors) != 1 {
+		t.Fatalf("len = %d, want 1", len(monitors))
+	}
+	if string(monitors[0].Type) != "tcp" {
+		t.Errorf("type = %q, want tcp (normalized from port)", monitors[0].Type)
+	}
+}
+
 func TestLoadInvalidTOML(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "monitors.toml")
 	os.WriteFile(path, []byte("this is not [ valid toml !!!"), 0644)
