@@ -954,20 +954,21 @@ func (m Model) visibleMonitors() []*models.MonitorStatus {
 		out = append(out, ms)
 	}
 	sort.SliceStable(out, func(i, j int) bool {
+		ni, nj := strings.ToLower(out[i].Monitor.Name), strings.ToLower(out[j].Monitor.Name)
 		switch m.sortKey {
 		case sortByStatus:
 			oi, oj := statusOrder(out[i].Status), statusOrder(out[j].Status)
 			if oi != oj {
 				return oi < oj
 			}
-			return out[i].Monitor.Name < out[j].Monitor.Name
+			return ni < nj
 		case sortByUptime:
 			if out[i].Uptime24h != out[j].Uptime24h {
 				return out[i].Uptime24h < out[j].Uptime24h
 			}
-			return out[i].Monitor.Name < out[j].Monitor.Name
+			return ni < nj
 		default: // sortByName
-			return out[i].Monitor.Name < out[j].Monitor.Name
+			return ni < nj
 		}
 	})
 	return out

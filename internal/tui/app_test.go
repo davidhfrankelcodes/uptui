@@ -924,6 +924,25 @@ func TestVisibleMonitorsSortByStatus(t *testing.T) {
 	}
 }
 
+func TestSortByNameCaseInsensitive(t *testing.T) {
+	m := newTestModel()
+	m.monitors = []*models.MonitorStatus{
+		{Monitor: models.Monitor{Name: "zebra"}, Status: models.StatusUp},
+		{Monitor: models.Monitor{Name: "Apple"}, Status: models.StatusUp},
+		{Monitor: models.Monitor{Name: "mango"}, Status: models.StatusUp},
+		{Monitor: models.Monitor{Name: "Banana"}, Status: models.StatusUp},
+	}
+	m.sortKey = sortByName
+
+	vis := m.visibleMonitors()
+	want := []string{"Apple", "Banana", "mango", "zebra"}
+	for i, w := range want {
+		if vis[i].Monitor.Name != w {
+			t.Errorf("[%d] got %q, want %q", i, vis[i].Monitor.Name, w)
+		}
+	}
+}
+
 func TestStatusOrder(t *testing.T) {
 	if statusOrder(models.StatusDown) >= statusOrder(models.StatusPending) {
 		t.Error("down should sort before pending")
