@@ -285,6 +285,79 @@ func TestEOpensEditPreFilled(t *testing.T) {
 	}
 }
 
+func TestDPrimesPendingDelete(t *testing.T) {
+	m := newTestModel()
+	m.monitors = monitors3
+	m.cursor = 1 // beta
+
+	m2, _ := m.Update(rune_('d'))
+	got := mustModel(t, m2)
+
+	if got.pendingDelete != "beta" {
+		t.Errorf("pendingDelete = %q, want beta", got.pendingDelete)
+	}
+	if got.view != viewDashboard {
+		t.Error("should stay on dashboard while confirming")
+	}
+}
+
+func TestDConfirmYDeletes(t *testing.T) {
+	m := newTestModel()
+	m.monitors = monitors3
+	m.pendingDelete = "beta"
+
+	_, cmd := m.Update(rune_('y'))
+	if cmd == nil {
+		t.Error("confirming delete should return a cmd")
+	}
+	// pendingDelete should be cleared
+	m2, _ := m.Update(rune_('y'))
+	got := mustModel(t, m2)
+	if got.pendingDelete != "" {
+		t.Errorf("pendingDelete = %q, want empty after confirm", got.pendingDelete)
+	}
+}
+
+func TestDCancelOnOtherKey(t *testing.T) {
+	m := newTestModel()
+	m.monitors = monitors3
+	m.pendingDelete = "beta"
+
+	m2, cmd := m.Update(rune_('n'))
+	got := mustModel(t, m2)
+
+	if got.pendingDelete != "" {
+		t.Errorf("pendingDelete = %q, want empty after cancel", got.pendingDelete)
+	}
+	if cmd != nil {
+		t.Error("cancelling delete should return no cmd")
+	}
+}
+
+func TestDCancelOnEsc(t *testing.T) {
+	m := newTestModel()
+	m.monitors = monitors3
+	m.pendingDelete = "alpha"
+
+	m2, _ := m.Update(key(tea.KeyEsc))
+	got := mustModel(t, m2)
+
+	if got.pendingDelete != "" {
+		t.Errorf("pendingDelete = %q, want empty after esc", got.pendingDelete)
+	}
+}
+
+func TestDNoopOnEmpty(t *testing.T) {
+	m := newTestModel()
+	// No monitors — d should not set pendingDelete
+	m2, _ := m.Update(rune_('d'))
+	got := mustModel(t, m2)
+
+	if got.pendingDelete != "" {
+		t.Errorf("d on empty: pendingDelete = %q, want empty", got.pendingDelete)
+	}
+}
+
 func TestENoopOnEmpty(t *testing.T) {
 	m := newTestModel()
 	// No monitors
@@ -501,55 +574,60 @@ func TestHumanDuration(t *testing.T) {
 }
 
 func TestSparklineStatusLength(t *testing.T) {
+	m := newTestModel()
 	history := []models.Result{
 		{Status: models.StatusUp},
 		{Status: models.StatusDown},
 		{Status: models.StatusPending},
 	}
 	// sparklineStatus always renders exactly 24 visual chars
-	got := lipgloss.Width(sparklineStatus(history))
+	got := lipgloss.Width(m.sparklineStatus(history))
 	if got != 24 {
 		t.Errorf("sparklineStatus width = %d, want 24", got)
 	}
 }
 
 func TestSparklineStatusEmpty(t *testing.T) {
-	got := sparklineStatus(nil)
+	m := newTestModel()
+	got := m.sparklineStatus(nil)
 	if lipgloss.Width(got) != 24 {
 		t.Errorf("empty sparkline width = %d, want 24", lipgloss.Width(got))
 	}
 }
 
 func TestLatencySparklineLength(t *testing.T) {
+	m := newTestModel()
 	history := make([]models.Result, 10)
 	for i := range history {
 		history[i] = models.Result{Status: models.StatusUp, Latency: (i + 1) * 10}
 	}
 	width := 10
-	got := lipgloss.Width(latencySparkline(history, width))
+	got := lipgloss.Width(m.latencySparkline(history, width))
 	if got != width {
 		t.Errorf("latencySparkline width = %d, want %d", got, width)
 	}
 }
 
 func TestLatencySparklineDownMarked(t *testing.T) {
+	m := newTestModel()
 	history := []models.Result{
 		{Status: models.StatusDown, Latency: 0},
 	}
 	// The sparkline string should contain ▁ (down marker)
-	raw := latencySparkline(history, 1)
+	raw := m.latencySparkline(history, 1)
 	if !strings.Contains(raw, "▁") {
 		t.Error("down result should render as ▁")
 	}
 }
 
 func TestLatencyStats(t *testing.T) {
+	m := newTestModel()
 	history := []models.Result{
 		{Status: models.StatusUp, Latency: 10},
 		{Status: models.StatusUp, Latency: 30},
 		{Status: models.StatusUp, Latency: 20},
 	}
-	got := latencyStats(history)
+	got := m.latencyStats(history)
 	if !strings.Contains(got, "10") {
 		t.Errorf("latencyStats missing min (10): %q", got)
 	}
@@ -562,7 +640,8 @@ func TestLatencyStats(t *testing.T) {
 }
 
 func TestLatencyStatsEmpty(t *testing.T) {
-	got := latencyStats(nil)
+	m := newTestModel()
+	got := m.latencyStats(nil)
 	if got != "" {
 		t.Errorf("latencyStats(nil) = %q, want empty", got)
 	}
@@ -644,6 +723,102 @@ func TestAddViewRendersFields(t *testing.T) {
 		if !strings.Contains(got, label) {
 			t.Errorf("add view missing field label %q", label)
 		}
+	}
+}
+
+func TestDashboardViewConfirmPrompt(t *testing.T) {
+	m := newTestModel()
+	m.loading = false
+	m.monitors = monitors3
+	m.pendingDelete = "beta"
+	got := m.dashboardView()
+
+	if !strings.Contains(got, "beta") {
+		t.Error("confirm prompt should contain monitor name")
+	}
+	if !strings.Contains(got, "Delete") {
+		t.Error("confirm prompt should contain 'Delete'")
+	}
+}
+
+func TestEditConfirmPromptOnSubmit(t *testing.T) {
+	m := newTestModel()
+	m.view = viewAdd
+	m.editMode = true
+	m.editOldName = "alpha"
+	m.addFocus = 3 // last field → submit on Enter
+
+	m.addInputs[0].SetValue("alpha-renamed")
+	m.addInputs[1].SetValue("http")
+	m.addInputs[2].SetValue("https://alpha.com")
+	m.addInputs[3].SetValue("30")
+
+	m2, cmd := m.Update(key(tea.KeyEnter))
+	got := mustModel(t, m2)
+
+	if got.pendingEdit == nil {
+		t.Fatal("pendingEdit should be set after submitting edit form")
+	}
+	if got.pendingEdit.Name != "alpha-renamed" {
+		t.Errorf("pendingEdit.Name = %q, want alpha-renamed", got.pendingEdit.Name)
+	}
+	if cmd != nil {
+		t.Error("should not fire a cmd until confirmed")
+	}
+	if got.view != viewAdd {
+		t.Error("should stay on add/edit view while confirming")
+	}
+}
+
+func TestEditConfirmCancelOnOtherKey(t *testing.T) {
+	m := newTestModel()
+	m.view = viewAdd
+	m.editMode = true
+	m.editOldName = "alpha"
+	m.pendingEdit = &models.Monitor{Name: "alpha-renamed"}
+
+	m2, cmd := m.Update(rune_('n'))
+	got := mustModel(t, m2)
+
+	if got.pendingEdit != nil {
+		t.Error("pendingEdit should be cleared after cancel")
+	}
+	if cmd != nil {
+		t.Error("cancel should return no cmd")
+	}
+	if got.view != viewAdd {
+		t.Error("should stay on add/edit view after cancel")
+	}
+}
+
+func TestEditConfirmCancelOnEsc(t *testing.T) {
+	m := newTestModel()
+	m.view = viewAdd
+	m.editMode = true
+	m.editOldName = "alpha"
+	m.pendingEdit = &models.Monitor{Name: "alpha-renamed"}
+
+	m2, _ := m.Update(key(tea.KeyEsc))
+	got := mustModel(t, m2)
+
+	if got.pendingEdit != nil {
+		t.Error("pendingEdit should be cleared on esc")
+	}
+}
+
+func TestAddViewRendersConfirmPrompt(t *testing.T) {
+	m := newTestModel()
+	m.view = viewAdd
+	m.editMode = true
+	m.editOldName = "alpha"
+	m.pendingEdit = &models.Monitor{Name: "alpha-renamed"}
+
+	got := m.addView()
+	if !strings.Contains(got, "Save changes") {
+		t.Error("confirm prompt should contain 'Save changes'")
+	}
+	if !strings.Contains(got, "alpha") {
+		t.Error("confirm prompt should contain the monitor name")
 	}
 }
 

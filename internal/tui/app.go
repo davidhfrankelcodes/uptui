@@ -55,6 +55,12 @@ type Model struct {
 	addErr      string
 	editMode    bool   // true when form is used for editing
 	editOldName string // the original name being edited
+
+	// delete confirmation
+	pendingDelete string // non-empty while awaiting y/N confirmation
+
+	// edit confirmation
+	pendingEdit *models.Monitor // non-nil while awaiting y/N confirmation for edit
 }
 
 func NewModel(client *ipc.Client, theme Theme) Model {
@@ -164,6 +170,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // ── dashboard keys ─────────────────────────────────────────────────────────────
 
 func (m Model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// ── confirmation mode: only y/n/esc are meaningful ───────────────────────
+	if m.pendingDelete != "" {
+		switch msg.String() {
+		case "y", "Y":
+			name := m.pendingDelete
+			c := m.client
+			m.pendingDelete = ""
+			return m, func() tea.Msg {
+				c.Delete(name)
+				monitors, err := c.List()
+				return dataMsg{monitors: monitors, err: err}
+			}
+		default:
+			m.pendingDelete = ""
+		}
+		return m, nil
+	}
+
 	switch msg.String() {
 	case "q", "ctrl+c":
 		return m, tea.Quit
@@ -208,13 +232,7 @@ func (m Model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "d":
 		if m.cursor < len(m.monitors) {
-			name := m.monitors[m.cursor].Monitor.Name
-			c := m.client
-			return m, func() tea.Msg {
-				c.Delete(name)
-				monitors, err := c.List()
-				return dataMsg{monitors: monitors, err: err}
-			}
+			m.pendingDelete = m.monitors[m.cursor].Monitor.Name
 		}
 	case "p":
 		if m.cursor < len(m.monitors) {
@@ -253,6 +271,28 @@ func (m Model) updateDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // ── add/edit form keys ─────────────────────────────────────────────────────────
 
 func (m Model) updateAdd(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// ── edit confirmation mode: only y/n/esc are meaningful ──────────────────
+	if m.pendingEdit != nil {
+		switch msg.String() {
+		case "y", "Y":
+			mon := *m.pendingEdit
+			m.pendingEdit = nil
+			_, err := m.client.Edit(m.editOldName, mon)
+			if err != nil {
+				m.addErr = err.Error()
+				return m, nil
+			}
+			m.addInputs[m.addFocus].Blur()
+			m.editMode = false
+			m.editOldName = ""
+			m.view = viewDashboard
+			return m, fetchData(m.client)
+		default:
+			m.pendingEdit = nil
+		}
+		return m, nil
+	}
+
 	switch msg.String() {
 	case "ctrl+c":
 		return m, tea.Quit
@@ -333,20 +373,18 @@ func (m Model) submitAdd() (tea.Model, tea.Cmd) {
 		Active:   true,
 	}
 
-	var err error
 	if m.editMode {
-		_, err = m.client.Edit(m.editOldName, mon)
-	} else {
-		_, err = m.client.Add(mon)
+		m.pendingEdit = &mon
+		return m, nil
 	}
+
+	_, err := m.client.Add(mon)
 	if err != nil {
 		m.addErr = err.Error()
 		return m, nil
 	}
 
 	m.addInputs[m.addFocus].Blur()
-	m.editMode = false
-	m.editOldName = ""
 	m.view = viewDashboard
 	return m, fetchData(m.client)
 }
@@ -442,15 +480,24 @@ func (m Model) dashboardView() string {
 
 	// ── footer ───────────────────────────────────────────────────────────────
 	sb.WriteString(m.styles.Border.Render(strings.Repeat("─", m.width)) + "\n")
-	footer := m.styles.Muted.Render(" ") +
-		m.styles.KeyHint.Render("a") + m.styles.Muted.Render("dd  ") +
-		m.styles.KeyHint.Render("e") + m.styles.Muted.Render("dit  ") +
-		m.styles.KeyHint.Render("d") + m.styles.Muted.Render("elete  ") +
-		m.styles.KeyHint.Render("p") + m.styles.Muted.Render("ause/resume  ") +
-		m.styles.KeyHint.Render("↑↓") + m.styles.Muted.Render(" navigate  ") +
-		m.styles.KeyHint.Render("↵") + m.styles.Muted.Render(" detail  ") +
-		m.styles.KeyHint.Render("r") + m.styles.Muted.Render(" refresh  ") +
-		m.styles.KeyHint.Render("q") + m.styles.Muted.Render("uit")
+	var footer string
+	if m.pendingDelete != "" {
+		footer = m.styles.Error.Render(" Delete ") +
+			m.styles.Bold.Render(truncate(m.pendingDelete, 40)) +
+			m.styles.Error.Render("?  ") +
+			m.styles.KeyHint.Render("y") + m.styles.Muted.Render(" confirm  ") +
+			m.styles.KeyHint.Render("any key") + m.styles.Muted.Render(" cancel")
+	} else {
+		footer = m.styles.Muted.Render(" ") +
+			m.styles.KeyHint.Render("a") + m.styles.Muted.Render("dd  ") +
+			m.styles.KeyHint.Render("e") + m.styles.Muted.Render("dit  ") +
+			m.styles.KeyHint.Render("d") + m.styles.Muted.Render("elete  ") +
+			m.styles.KeyHint.Render("p") + m.styles.Muted.Render("ause/resume  ") +
+			m.styles.KeyHint.Render("↑↓") + m.styles.Muted.Render(" navigate  ") +
+			m.styles.KeyHint.Render("↵") + m.styles.Muted.Render(" detail  ") +
+			m.styles.KeyHint.Render("r") + m.styles.Muted.Render(" refresh  ") +
+			m.styles.KeyHint.Render("q") + m.styles.Muted.Render("uit")
+	}
 	sb.WriteString(footer)
 
 	return sb.String()
@@ -634,11 +681,19 @@ func (m Model) addView() string {
 		sb.WriteString(m.styles.Error.Render("  ✗ "+m.addErr) + "\n\n")
 	}
 
-	sb.WriteString(m.styles.Muted.Render("  ") +
-		m.styles.KeyHint.Render("tab") + m.styles.Muted.Render("/") +
-		m.styles.KeyHint.Render("↑↓") + m.styles.Muted.Render(" navigate  ") +
-		m.styles.KeyHint.Render("enter") + m.styles.Muted.Render(" next/submit  ") +
-		m.styles.KeyHint.Render("esc") + m.styles.Muted.Render(" cancel"))
+	if m.pendingEdit != nil {
+		sb.WriteString(m.styles.Error.Render("  Save changes to ") +
+			m.styles.Bold.Render(truncate(m.editOldName, 40)) +
+			m.styles.Error.Render("?  ") +
+			m.styles.KeyHint.Render("y") + m.styles.Muted.Render(" confirm  ") +
+			m.styles.KeyHint.Render("any key") + m.styles.Muted.Render(" cancel"))
+	} else {
+		sb.WriteString(m.styles.Muted.Render("  ") +
+			m.styles.KeyHint.Render("tab") + m.styles.Muted.Render("/") +
+			m.styles.KeyHint.Render("↑↓") + m.styles.Muted.Render(" navigate  ") +
+			m.styles.KeyHint.Render("enter") + m.styles.Muted.Render(" next/submit  ") +
+			m.styles.KeyHint.Render("esc") + m.styles.Muted.Render(" cancel"))
+	}
 
 	return sb.String()
 }

@@ -52,7 +52,9 @@ main.go ──► runTUI()
                 ├── Init: fetchData (List RPC) + schedTick
                 ├── tickMsg every 5 s: fetchData again
                 └── key events → updateDashboard / updateDetail / updateAdd
-                      └── 'e' key: opens pre-filled add form in edit mode
+                      ├── 'd' key: sets pendingDelete → y/any-key confirmation in footer
+                      └── 'e' key: opens pre-filled add form; Enter on last field sets
+                            pendingEdit → y/any-key confirmation footer before IPC call
 ```
 
 ## Build and test
@@ -146,6 +148,7 @@ active = false    # written only when paused; omitted (defaults true) otherwise
 - `config/config_test.go` uses `package config_test` (black-box) to test `Load`/`Save` round-trips, defaults, edge cases, and `LoadSettings`/`SaveSettings`.
 - IPC tests start a real server on a randomly-assigned port. There is a TOCTOU window between grabbing the port and the server binding to it; this is acceptable in tests.
 - TUI tests never connect to a real daemon. `dataMsg` values are injected directly into `model.Update()`.
+- Destructive/mutating actions use a two-step confirmation pattern: `pendingDelete string` (dashboard footer) and `pendingEdit *models.Monitor` (add/edit form footer). Tests cover prime → confirm → cancel for both.
 
 ## Adding a new monitor type
 

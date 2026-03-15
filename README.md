@@ -116,7 +116,7 @@ The CLI (`uptui add`, `uptui edit`) and TUI (`a`, `e`) write back to this file a
 | `enter` | Open detail view |
 | `a` | Add a new monitor |
 | `e` | Edit selected monitor (opens pre-filled form) |
-| `d` | Delete selected monitor |
+| `d` | Delete selected monitor (confirmation required) |
 | `p` | Pause / resume selected monitor |
 | `r` | Force refresh |
 | `q` / `ctrl+c` | Quit |
@@ -136,6 +136,8 @@ The CLI (`uptui add`, `uptui edit`) and TUI (`a`, `e`) write back to this file a
 | `shift+tab` / `↑` | Previous field |
 | `enter` | Next field / submit (on last field) |
 | `esc` | Cancel |
+
+When editing, submitting the form shows a confirmation prompt (`Save changes to "name"?`). Press `y` to confirm or any other key to cancel and return to the form.
 
 ## Themes
 

@@ -104,6 +104,9 @@ func checkTCP(ctx context.Context, m models.Monitor, start time.Time) models.Res
 	}
 	conn.Close()
 
+	if latency == 0 {
+		latency = 1
+	}
 	return models.Result{
 		Timestamp: time.Now(),
 		Status:    models.StatusUp,
