@@ -42,6 +42,21 @@ Check history is stored in the `uptui-data` named volume.
 **To reach hosts on your machine from inside the container** use `host.docker.internal`
 instead of `localhost` in your monitor targets (e.g. `host.docker.internal:5432`).
 
+### Customizing the Docker setup
+
+All compose variables have defaults that work out of the box. Copy `.env` to your working directory (it is already present in the repo) and uncomment any line to override:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `UPTUI_HOST_ADDR` | `127.0.0.1` | Host IP the IPC port binds on (`0.0.0.0` to expose to LAN) |
+| `UPTUI_HOST_PORT` | `29374` | Port on the host the TUI connects to |
+| `UPTUI_CONTAINER_PORT` | `29374` | Port inside the container (must match `UPTUI_LISTEN_ADDR`) |
+| `UPTUI_LISTEN_ADDR` | `0.0.0.0:29374` | Address the daemon binds inside the container |
+| `UPTUI_CONFIG_DIR` | `/config` | Config directory inside the container |
+| `UPTUI_DATA_DIR` | `/data` | Data directory inside the container |
+| `UPTUI_CONFIG_MOUNT` | `./config` | Host path bind-mounted to `UPTUI_CONFIG_DIR` |
+| `RESTART_POLICY` | `unless-stopped` | Docker restart policy |
+
 ## Install
 
 Requires [Go 1.21+](https://go.dev/dl/).
@@ -203,8 +218,9 @@ When `settings.toml` is absent or theme is `"default"`, ANSI colors are used.
 |------|---------------|---------|
 | `http` | Full URL | `https://example.com/health` |
 | `tcp` | `host:port` | `localhost:5432` |
+| `port` | `host:port` | `localhost:5432` (alias for `tcp`) |
 
-HTTP monitors follow redirects (up to 10) and report down for any 4xx/5xx response. TCP monitors report up as soon as the connection is established.
+HTTP monitors follow redirects (up to 10) and report down for any 4xx/5xx response. TCP monitors report up as soon as the connection is established. `port` is a legacy alias for `tcp` and is normalized to `tcp` on config load.
 
 ## Data
 
@@ -256,3 +272,8 @@ The Docker setup sets `UPTUI_LISTEN_ADDR=0.0.0.0:29374` so the published port is
 The daemon is the **single writer** of both `monitors.toml` and `history.json`. All mutations (add, delete, edit, pause, resume) go through IPC; the daemon writes the config and then updates its runtime state.
 
 External edits to `monitors.toml` are detected by polling the file's modification time every 5 seconds and trigger a reconcile — goroutines are started, stopped, or restarted to match the new desired state.
+
+## Further reading
+
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — planned and completed features
+- [`docs/TESTS.md`](docs/TESTS.md) — how to run the test suite and what is covered

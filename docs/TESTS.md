@@ -73,10 +73,10 @@ Pattern matching is a substring/regex match on the test function name, so `-run 
 
 | Package | Test file | Style | Notes |
 |---------|-----------|-------|-------|
-| `internal/checker` | `checker_test.go` | black-box (`package checker_test`) | Starts a real local HTTP/TCP server; needs network access on loopback |
-| `internal/config` | `config_test.go` | black-box (`package config_test`) | Reads/writes temp files; covers `Load`/`Save` and `LoadSettings`/`SaveSettings` |
-| `internal/daemon` | `daemon_test.go` | white-box (`package daemon`) | Tests unexported `calcUptime`; no network |
-| `internal/ipc` | `ipc_test.go` | black-box (`package ipc_test`) | Starts a real IPC server on a random port; TOCTOU window is acceptable in tests |
+| `internal/checker` | `checker_test.go` | black-box (`package checker_test`) | Starts a real local HTTP/TCP server on loopback; includes `port` type alias test |
+| `internal/config` | `config_test.go` | black-box (`package config_test`) | Reads/writes temp files; covers `Load`/`Save`, `LoadSettings`/`SaveSettings`, and `port`→`tcp` normalization |
+| `internal/daemon` | `daemon_test.go` | white-box (`package daemon`) | Tests unexported `calcUptime` for 24 h, 7 d, and 30 d windows; no network |
+| `internal/ipc` | `ipc_test.go` | black-box (`package ipc_test`) | Starts a real IPC server on a random port; includes large-payload regression (50 monitors × 500 history entries) |
 | `internal/store` | `store_test.go` | black-box (`package store_test`) | Reads/writes temp files |
 | `internal/tui` | `app_test.go`, `theme_test.go` | white-box (`package tui`) | No network, no real daemon; messages injected directly into `model.Update()` |
 
@@ -85,12 +85,12 @@ Pattern matching is a substring/regex match on the test function name, so `-run 
 ## What is and isn't tested
 
 **Covered:**
-- Config load/save round-trips, defaults, atomic writes, and settings (theme)
+- Config load/save round-trips, defaults, atomic writes, settings (theme), and `port`→`tcp` normalization
 - History store: add, delete, rename, persistence, 500-result cap
-- Checker: HTTP up/down, redirects, cancelled context, TCP up/down
-- Daemon: uptime calculation over a 24-hour rolling window
-- IPC: all actions (list, add, delete, pause, resume, edit, reload) over a real TCP socket
-- TUI model: navigation, view switching, form validation, delete/edit confirmation flow, sparklines, all 7 themes, sort/filter cycling, `visibleMonitors` filtering, detail-view scroll (j/k, clamp, reset), scroll indicators
+- Checker: HTTP up/down/redirects/cancelled context, TCP up/down, `port` type alias
+- Daemon: uptime calculation over 24 h, 7 d, and 30 d rolling windows
+- IPC: all actions (list, add, delete, pause, resume, edit, reload) over a real TCP socket; large-payload responses (>64 KB)
+- TUI model: navigation, view switching, form validation (HTTP protocol prefix, TCP `host:port` format, `port` type alias), delete/edit confirmation flow, sparklines, all 7 themes, sort/filter cycling, `visibleMonitors` filtering, detail-view scroll (j/k, clamp, reset), scroll indicators, dashboard viewport scrolling (cursor stays visible in long lists)
 
 **Not covered:**
 - `cmd/uptui` (`main.go`) — no test file; CLI behaviour is exercised manually

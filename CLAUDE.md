@@ -12,7 +12,7 @@ For every change, no matter how small, follow these steps in order before declar
    ```
    Do not stop until every package shows `ok`. If a pre-existing test breaks, fix it — do not skip or ignore it.
 
-3. **Resolve documentation drift.** After the code and tests pass, scan every `.md` file (`CLAUDE.md`, `README.md`, `ROADMAP.md`, `TESTS.md`) and update any section that is now inaccurate or incomplete. This includes package layouts, CLI command lists, keybinding tables, design-decision notes, and test notes.
+3. **Resolve documentation drift.** After the code and tests pass, scan every `.md` file (`CLAUDE.md`, `README.md`, `docs/ROADMAP.md`, `docs/TESTS.md`) and update any section that is now inaccurate or incomplete. This includes package layouts, CLI command lists, keybinding tables, design-decision notes, and test notes.
 
 4. **Only then report back.** The finished response to the user should reflect a clean test run and up-to-date docs.
 
@@ -44,6 +44,14 @@ internal/
     styles.go              Styles struct + NewStyles(Theme) + StatusStyle method
     app.go                 Bubbletea Model — Init / Update / View + all helper functions
 ```
+
+## Documentation
+
+Project documentation lives in `docs/`:
+- `docs/ROADMAP.md` — completed and planned features
+- `docs/TESTS.md` — how to run tests and what is covered
+
+`CLAUDE.md` and `README.md` stay at the repo root: `CLAUDE.md` because Claude Code auto-loads it, `README.md` because it is the GitHub landing page.
 
 ## How the pieces connect
 
@@ -119,7 +127,11 @@ This is idempotent — safe to run repeatedly. Called from `Run()` (no lock, sin
 
 **Auto-start**: When `runTUI()` is called, it checks `client.Ping()` (a plain TCP dial). If the daemon is not reachable it calls `exec.Command(os.Executable(), "daemon")` with stdout/stderr redirected to `~/.uptui/daemon.log` and calls `cmd.Start()` (no `Wait`). It then polls `Ping()` for up to 3 seconds.
 
-**IPC protocol**: Each connection is request/response: the client sends one JSON line, the server responds with one JSON line, then the connection is closed. The server uses `bufio.Scanner` to read lines and `json.NewEncoder` to write responses.
+**IPC protocol**: Each connection is request/response: the client sends one JSON line, the server responds with one JSON line, then the connection is closed. The server uses `json.NewDecoder` to read requests and `json.NewEncoder` to write responses. (`bufio.Scanner` was replaced to remove the 64 KB `MaxScanTokenSize` limit — large `list` responses with many monitors × 500 history entries now work correctly.)
+
+**`port` type alias**: `monitors.toml` files may use `type = "port"` as a legacy alias for TCP. Normalized to `models.TCP` ("tcp") at three layers: `config.Load()` (on file read), `checker.Check()` (at runtime, as a fallback), and `submitAdd()` in `tui/app.go` (before form validation). This ensures hand-edited configs always work and the stored type is always canonical.
+
+**Dashboard viewport (`listOffset`)**: `Model.listOffset int` tracks the first visible row index in the dashboard list. `dashboardRows(height)` computes the page size (height−6, min 1). `clampListOffset(offset, cursor, pageSize)` adjusts the offset so the cursor is always on screen. Called on every cursor move, filter change, data update, and window resize. `dashboardView()` slices `visible[offset:end]` and uses `offset+i == m.cursor` for highlight.
 
 ## IPC actions
 
@@ -172,6 +184,10 @@ active = false    # written only when paused; omitted (defaults true) otherwise
 - Destructive/mutating actions use a two-step confirmation pattern: `pendingDelete string` (dashboard footer) and `pendingEdit *models.Monitor` (add/edit form footer). Tests cover prime → confirm → cancel for both.
 - Sort/filter state lives in `Model.sortKey` (0=name, 1=status, 2=uptime) and `Model.filterKey` (0=all, 1=down, 2=problems). `visibleMonitors()` applies filter then stable-sort. Cursor is clamped to visible list on every `dataMsg` and filter change.
 - Detail view scroll state lives in `Model.detailScroll` (offset from most-recent end, 0 = show newest). `detailPageSize(height)` computes page size; `j`/`↓` increments scroll, `k`/`↑` decrements, reset to 0 on enter/esc.
+- Dashboard viewport scroll: `Model.listOffset int` + `clampListOffset(offset, cursor, pageSize)` + `dashboardRows(height)`. Tests: `TestDashboardRows`, `TestClampListOffset`, `TestDashboardScrollsToFollowCursor`.
+- Target format validation in `submitAdd`: HTTP targets must start with `http://` or `https://`; TCP targets validated with `net.SplitHostPort` + port range 1–65535. `port` type normalized to `tcp` before validation. Tests: `TestSubmitHTTPNoProtocol`, `TestSubmitTCPNoPort`, `TestSubmitTCPInvalidPort`, `TestSubmitTCPValidTarget`, `TestSubmitPortTypeNormalized`.
+- `port` type alias: normalized in `config.Load()` (`TestLoadPortTypeNormalized`) and `checker.Check()` (`TestCheckPortTypeAlias`).
+- IPC large-payload regression: `TestListLargePayload` (50 monitors × 500 history entries, verifies >64 KB responses work with `json.NewDecoder`).
 
 ## Adding a new monitor type
 
