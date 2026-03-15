@@ -85,7 +85,7 @@ type Model struct {
 }
 
 func NewModel(client *ipc.Client, theme Theme) Model {
-	inputs := make([]textinput.Model, 4)
+	inputs := make([]textinput.Model, 5)
 
 	inputs[0] = textinput.New()
 	inputs[0].Placeholder = "My Service"
@@ -106,6 +106,11 @@ func NewModel(client *ipc.Client, theme Theme) Model {
 	inputs[3].Placeholder = "60"
 	inputs[3].CharLimit = 6
 	inputs[3].Width = 8
+
+	inputs[4] = textinput.New()
+	inputs[4].Placeholder = "200-299"
+	inputs[4].CharLimit = 50
+	inputs[4].Width = 24
 
 	return Model{
 		client:    client,
@@ -253,6 +258,7 @@ func (m Model) updateDashboard(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.addInputs[1].SetValue(string(ms.Monitor.Type))
 			m.addInputs[2].SetValue(ms.Monitor.Target)
 			m.addInputs[3].SetValue(fmt.Sprintf("%d", ms.Monitor.Interval))
+			m.addInputs[4].SetValue(ms.Monitor.AcceptedStatuses)
 			m.addFocus = 0
 			m.addErr = ""
 			m.view = viewAdd
@@ -397,6 +403,7 @@ func (m Model) submitAdd() (tea.Model, tea.Cmd) {
 	monType := strings.ToLower(strings.TrimSpace(m.addInputs[1].Value()))
 	target := strings.TrimSpace(m.addInputs[2].Value())
 	intervalStr := strings.TrimSpace(m.addInputs[3].Value())
+	acceptedStatuses := strings.TrimSpace(m.addInputs[4].Value())
 
 	if name == "" {
 		m.addErr = "name is required"
@@ -435,6 +442,17 @@ func (m Model) submitAdd() (tea.Model, tea.Cmd) {
 		}
 	}
 
+	if acceptedStatuses != "" {
+		if monType == "http" {
+			if _, err := models.ParseAcceptedStatuses(acceptedStatuses); err != nil {
+				m.addErr = "accepted statuses: " + err.Error()
+				return m, nil
+			}
+		} else {
+			acceptedStatuses = "" // ignored for TCP
+		}
+	}
+
 	interval := 60
 	if intervalStr != "" {
 		fmt.Sscanf(intervalStr, "%d", &interval)
@@ -444,12 +462,13 @@ func (m Model) submitAdd() (tea.Model, tea.Cmd) {
 	}
 
 	mon := models.Monitor{
-		Name:     name,
-		Type:     models.MonitorType(monType),
-		Target:   target,
-		Interval: interval,
-		Timeout:  30,
-		Active:   true,
+		Name:             name,
+		Type:             models.MonitorType(monType),
+		Target:           target,
+		Interval:         interval,
+		Timeout:          30,
+		Active:           true,
+		AcceptedStatuses: acceptedStatuses,
 	}
 
 	if m.editMode {
@@ -775,12 +794,14 @@ func (m Model) addView() string {
 		"Type      ",
 		"Target    ",
 		"Interval  ",
+		"Accepted  ",
 	}
 	hints := []string{
 		"",
 		m.styles.Muted.Render("  (http or tcp)"),
 		"",
 		m.styles.Muted.Render("  seconds, min 10"),
+		m.styles.Muted.Render("  HTTP status codes (e.g. 200-299,401; empty = any 2xx/3xx)"),
 	}
 
 	for i, input := range m.addInputs {

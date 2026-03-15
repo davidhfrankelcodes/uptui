@@ -103,6 +103,7 @@ Flags for add:
   --name, -n NAME                 Display name  (default: TARGET)
   --type, -t http|tcp             Monitor type  (default: http)
   --interval, -i SECONDS          Check interval (default: 60, min: 10)
+  --accepted-statuses CODES       HTTP status codes that count as up (e.g. "200-299,401")
 
 Flags for edit:
   --name NEWNAME                  Rename the monitor
@@ -110,6 +111,7 @@ Flags for edit:
   --type http|tcp                 Change monitor type
   --interval SECONDS              New check interval
   --timeout SECONDS               New timeout
+  --accepted-statuses CODES       HTTP status codes that count as up (e.g. "200-299,401")
 ```
 
 ## Config file
@@ -133,6 +135,12 @@ name   = "Legacy API"
 type   = "http"
 target = "https://api.legacy.com/health"
 active = false
+
+[[monitor]]
+name              = "Private API"
+type              = "http"
+target            = "https://api.internal.com/health"
+accepted_statuses = "200-299,401"
 ```
 
 **Field defaults** — omitted when at their defaults to keep the file clean:
@@ -142,6 +150,7 @@ active = false
 | `interval` | `60` | Seconds between checks (min 10) |
 | `timeout` | `30` | Seconds before a check times out |
 | `active` | `true` | Set `false` to pause without deleting |
+| `accepted_statuses` | `""` | HTTP only. Comma-separated codes/ranges that count as up (e.g. `"200-299,401"`). Empty = any `< 400` is up |
 
 The CLI (`uptui add`, `uptui edit`) and TUI (`a`, `e`) write back to this file automatically.
 

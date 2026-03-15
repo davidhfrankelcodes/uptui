@@ -129,6 +129,8 @@ This is idempotent — safe to run repeatedly. Called from `Run()` (no lock, sin
 
 **IPC protocol**: Each connection is request/response: the client sends one JSON line, the server responds with one JSON line, then the connection is closed. The server uses `json.NewDecoder` to read requests and `json.NewEncoder` to write responses. (`bufio.Scanner` was replaced to remove the 64 KB `MaxScanTokenSize` limit — large `list` responses with many monitors × 500 history entries now work correctly.)
 
+**Accepted HTTP statuses**: `Monitor.AcceptedStatuses string` holds a comma-separated list of codes and ranges (e.g. `"200-299,401,403"`) that count as up for HTTP monitors. Empty string means the default rule (any `< 400` is up). `models.ParseAcceptedStatuses(s)` parses and validates the string — shared by the checker and the TUI form. The checker calls it in `checkHTTP`; unrecognized format is silently treated as "no override" (parse errors from user input are caught at form submission). Config saves/loads `accepted_statuses` and omits it when empty. TCP monitors ignore the field; the TUI clears it on submit if type is tcp.
+
 **`port` type alias**: `monitors.toml` files may use `type = "port"` as a legacy alias for TCP. Normalized to `models.TCP` ("tcp") at three layers: `config.Load()` (on file read), `checker.Check()` (at runtime, as a fallback), and `submitAdd()` in `tui/app.go` (before form validation). This ensures hand-edited configs always work and the stored type is always canonical.
 
 **Dashboard viewport (`listOffset`)**: `Model.listOffset int` tracks the first visible row index in the dashboard list. `dashboardRows(height)` computes the page size (height−6, min 1). `clampListOffset(offset, cursor, pageSize)` adjusts the offset so the cursor is always on screen. Called on every cursor move, filter change, data update, and window resize. `dashboardView()` slices `visible[offset:end]` and uses `offset+i == m.cursor` for highlight.
@@ -188,6 +190,10 @@ active = false    # written only when paused; omitted (defaults true) otherwise
 - Target format validation in `submitAdd`: HTTP targets must start with `http://` or `https://`; TCP targets validated with `net.SplitHostPort` + port range 1–65535. `port` type normalized to `tcp` before validation. Tests: `TestSubmitHTTPNoProtocol`, `TestSubmitTCPNoPort`, `TestSubmitTCPInvalidPort`, `TestSubmitTCPValidTarget`, `TestSubmitPortTypeNormalized`.
 - `port` type alias: normalized in `config.Load()` (`TestLoadPortTypeNormalized`) and `checker.Check()` (`TestCheckPortTypeAlias`).
 - IPC large-payload regression: `TestListLargePayload` (50 monitors × 500 history entries, verifies >64 KB responses work with `json.NewDecoder`).
+- `models/models_test.go` (new): `TestParseAcceptedStatuses*` — empty, single code, range, mixed, whitespace, invalid code, out-of-range, inverted range.
+- Accepted statuses in checker: `TestCheckHTTPAcceptedStatuses401IsUp`, `TestCheckHTTPAcceptedStatusesDefaultBehavior`, `TestCheckHTTPAcceptedStatusesRangeMatch`, `TestCheckHTTPAcceptedStatusesRangeNoMatch`, `TestCheckHTTPAcceptedStatusesMultiple`.
+- Accepted statuses in config: `TestLoadAcceptedStatuses`, `TestSaveAcceptedStatusesRoundTrip`, `TestSaveAcceptedStatusesOmittedWhenEmpty`.
+- Accepted statuses in TUI form: `TestSubmitHTTPAcceptedStatusesValid`, `TestSubmitHTTPAcceptedStatusesInvalidFormat`, `TestSubmitTCPAcceptedStatusesIgnored`.
 
 ## Adding a new monitor type
 

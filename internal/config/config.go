@@ -68,12 +68,13 @@ const defaultTimeout = 30
 
 // tomlMonitor is the on-disk representation of a single monitor entry.
 type tomlMonitor struct {
-	Name     string `toml:"name"`
-	Type     string `toml:"type"`
-	Target   string `toml:"target"`
-	Interval int    `toml:"interval"`
-	Timeout  int    `toml:"timeout"`
-	Active   *bool  `toml:"active"` // nil → true; explicit false → paused
+	Name             string `toml:"name"`
+	Type             string `toml:"type"`
+	Target           string `toml:"target"`
+	Interval         int    `toml:"interval"`
+	Timeout          int    `toml:"timeout"`
+	Active           *bool  `toml:"active"`            // nil → true; explicit false → paused
+	AcceptedStatuses string `toml:"accepted_statuses"` // HTTP only; empty = default
 }
 
 type tomlFile struct {
@@ -101,12 +102,13 @@ func Load(path string) ([]models.Monitor, error) {
 			continue
 		}
 		m := models.Monitor{
-			Name:     tm.Name,
-			Type:     models.MonitorType(tm.Type),
-			Target:   tm.Target,
-			Interval: tm.Interval,
-			Timeout:  tm.Timeout,
-			Active:   true,
+			Name:             tm.Name,
+			Type:             models.MonitorType(tm.Type),
+			Target:           tm.Target,
+			Interval:         tm.Interval,
+			Timeout:          tm.Timeout,
+			Active:           true,
+			AcceptedStatuses: tm.AcceptedStatuses,
 		}
 		if m.Type == "" {
 			m.Type = models.HTTP
@@ -145,6 +147,9 @@ func Save(path string, monitors []models.Monitor) error {
 		buf.WriteString(fmt.Sprintf("name     = %q\n", m.Name))
 		buf.WriteString(fmt.Sprintf("type     = %q\n", string(m.Type)))
 		buf.WriteString(fmt.Sprintf("target   = %q\n", m.Target))
+		if m.AcceptedStatuses != "" {
+			buf.WriteString(fmt.Sprintf("accepted_statuses = %q\n", m.AcceptedStatuses))
+		}
 		if m.Interval != defaultInterval {
 			buf.WriteString(fmt.Sprintf("interval = %d\n", m.Interval))
 		}

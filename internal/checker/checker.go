@@ -75,10 +75,16 @@ func checkHTTP(ctx context.Context, m models.Monitor, start time.Time) models.Re
 	}
 	resp.Body.Close()
 
-	status := models.StatusUp
 	msg := fmt.Sprintf("HTTP %d", resp.StatusCode)
-	if resp.StatusCode >= 400 {
-		status = models.StatusDown
+	status := models.StatusDown
+
+	ranges, _ := models.ParseAcceptedStatuses(m.AcceptedStatuses)
+	if len(ranges) > 0 {
+		if statusInRanges(resp.StatusCode, ranges) {
+			status = models.StatusUp
+		}
+	} else if resp.StatusCode < 400 {
+		status = models.StatusUp
 	}
 
 	return models.Result{
@@ -87,6 +93,15 @@ func checkHTTP(ctx context.Context, m models.Monitor, start time.Time) models.Re
 		Latency:   latency,
 		Message:   msg,
 	}
+}
+
+func statusInRanges(code int, ranges [][2]int) bool {
+	for _, r := range ranges {
+		if code >= r[0] && code <= r[1] {
+			return true
+		}
+	}
+	return false
 }
 
 func checkTCP(ctx context.Context, m models.Monitor, start time.Time) models.Result {

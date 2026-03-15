@@ -57,11 +57,17 @@ Monitors configured with `type = "port"` in a hand-edited `monitors.toml` are no
 
 ---
 
+## ✓ Custom HTTP accepted statuses
+
+`accepted_statuses` field on HTTP monitors: comma-separated codes and ranges that count as "up" (e.g. `"200-299,401"`). Empty = any `< 400` is up. Configurable in `monitors.toml`, via `uptui add/edit --accepted-statuses`, and in the TUI add/edit form. Validation in `models.ParseAcceptedStatuses` is shared by the checker and the form.
+
+---
+
 ## v0.2 — richer HTTP checks
 
 The current HTTP monitor does a plain `GET` and checks the status code. Most real-world use cases need more.
 
-- **Custom expected status code** — configure what counts as "up" (e.g. `301`, `401`)
+- **Custom expected status code** — ✓ done (see above)
 - **Keyword match** — mark down if the response body doesn't contain a string
 - **Custom request method and headers** — useful for authenticated endpoints
 - **TLS certificate expiry** — warn N days before a cert expires, independent of HTTP status

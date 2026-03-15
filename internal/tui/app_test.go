@@ -55,8 +55,8 @@ func TestNewModelDefaults(t *testing.T) {
 	if m.view != viewDashboard {
 		t.Errorf("view = %v, want dashboard", m.view)
 	}
-	if len(m.addInputs) != 4 {
-		t.Errorf("addInputs len = %d, want 4", len(m.addInputs))
+	if len(m.addInputs) != 5 {
+		t.Errorf("addInputs len = %d, want 5", len(m.addInputs))
 	}
 }
 
@@ -450,7 +450,7 @@ func TestAddFormShiftTabGoesBack(t *testing.T) {
 func TestAddFormTabWraps(t *testing.T) {
 	m := newTestModel()
 	m.view = viewAdd
-	m.addFocus = 3 // last field
+	m.addFocus = 4 // last field
 
 	m2, _ := m.Update(key(tea.KeyTab))
 	got := mustModel(t, m2)
@@ -465,7 +465,7 @@ func TestAddFormTabWraps(t *testing.T) {
 func TestSubmitAddEmptyName(t *testing.T) {
 	m := newTestModel()
 	m.view = viewAdd
-	m.addFocus = 3 // focus on last field so Enter triggers submit
+	m.addFocus = 4 // focus on last field so Enter triggers submit
 
 	// Leave name empty, set required fields
 	m.addInputs[1].SetValue("http")
@@ -485,7 +485,7 @@ func TestSubmitAddEmptyName(t *testing.T) {
 func TestSubmitAddBadType(t *testing.T) {
 	m := newTestModel()
 	m.view = viewAdd
-	m.addFocus = 3
+	m.addFocus = 4
 
 	m.addInputs[0].SetValue("my service")
 	m.addInputs[1].SetValue("ftp")
@@ -502,7 +502,7 @@ func TestSubmitAddBadType(t *testing.T) {
 func TestSubmitAddEmptyTarget(t *testing.T) {
 	m := newTestModel()
 	m.view = viewAdd
-	m.addFocus = 3
+	m.addFocus = 4
 
 	m.addInputs[0].SetValue("my service")
 	m.addInputs[1].SetValue("http")
@@ -719,7 +719,7 @@ func TestAddViewRendersFields(t *testing.T) {
 	m.view = viewAdd
 	got := m.addView()
 
-	for _, label := range []string{"Name", "Type", "Target", "Interval"} {
+	for _, label := range []string{"Name", "Type", "Target", "Interval", "Accepted"} {
 		if !strings.Contains(got, label) {
 			t.Errorf("add view missing field label %q", label)
 		}
@@ -746,7 +746,7 @@ func TestEditConfirmPromptOnSubmit(t *testing.T) {
 	m.view = viewAdd
 	m.editMode = true
 	m.editOldName = "alpha"
-	m.addFocus = 3 // last field → submit on Enter
+	m.addFocus = 4 // last field → submit on Enter
 
 	m.addInputs[0].SetValue("alpha-renamed")
 	m.addInputs[1].SetValue("http")
@@ -1173,7 +1173,7 @@ func TestSubmitPortTypeNormalized(t *testing.T) {
 	m.view = viewAdd
 	m.editMode = true // avoid real client call
 	m.editOldName = "old"
-	m.addFocus = 3
+	m.addFocus = 4
 
 	m.addInputs[0].SetValue("ssh")
 	m.addInputs[1].SetValue("port") // legacy alias
@@ -1197,7 +1197,7 @@ func TestSubmitPortTypeNormalized(t *testing.T) {
 func TestSubmitHTTPNoProtocol(t *testing.T) {
 	m := newTestModel()
 	m.view = viewAdd
-	m.addFocus = 3
+	m.addFocus = 4
 
 	m.addInputs[0].SetValue("my service")
 	m.addInputs[1].SetValue("http")
@@ -1217,7 +1217,7 @@ func TestSubmitHTTPNoProtocol(t *testing.T) {
 func TestSubmitTCPNoPort(t *testing.T) {
 	m := newTestModel()
 	m.view = viewAdd
-	m.addFocus = 3
+	m.addFocus = 4
 
 	m.addInputs[0].SetValue("my db")
 	m.addInputs[1].SetValue("tcp")
@@ -1234,7 +1234,7 @@ func TestSubmitTCPNoPort(t *testing.T) {
 func TestSubmitTCPInvalidPort(t *testing.T) {
 	m := newTestModel()
 	m.view = viewAdd
-	m.addFocus = 3
+	m.addFocus = 4
 
 	m.addInputs[0].SetValue("my db")
 	m.addInputs[1].SetValue("tcp")
@@ -1253,7 +1253,7 @@ func TestSubmitTCPValidTarget(t *testing.T) {
 	m.view = viewAdd
 	m.editMode = true // avoid real client.Add() call
 	m.editOldName = "old"
-	m.addFocus = 3
+	m.addFocus = 4
 
 	m.addInputs[0].SetValue("postgres")
 	m.addInputs[1].SetValue("tcp")
@@ -1268,6 +1268,87 @@ func TestSubmitTCPValidTarget(t *testing.T) {
 	}
 	if got.pendingEdit == nil {
 		t.Error("pendingEdit should be set for valid TCP target in edit mode")
+	}
+}
+
+// ── accepted statuses form field ──────────────────────────────────────────────
+
+func TestSubmitHTTPAcceptedStatusesValid(t *testing.T) {
+	m := newTestModel()
+	m.view = viewAdd
+	m.editMode = true
+	m.editOldName = "old"
+	m.addFocus = 4
+
+	m.addInputs[0].SetValue("API")
+	m.addInputs[1].SetValue("http")
+	m.addInputs[2].SetValue("https://api.example.com")
+	m.addInputs[3].SetValue("60")
+	m.addInputs[4].SetValue("200-299,401")
+
+	m2, _ := m.Update(key(tea.KeyEnter))
+	got := mustModel(t, m2)
+
+	if got.addErr != "" {
+		t.Errorf("unexpected error for valid accepted statuses: %q", got.addErr)
+	}
+	if got.pendingEdit == nil {
+		t.Fatal("pendingEdit should be set")
+	}
+	if got.pendingEdit.AcceptedStatuses != "200-299,401" {
+		t.Errorf("AcceptedStatuses = %q, want %q", got.pendingEdit.AcceptedStatuses, "200-299,401")
+	}
+}
+
+func TestSubmitHTTPAcceptedStatusesInvalidFormat(t *testing.T) {
+	m := newTestModel()
+	m.view = viewAdd
+	m.editMode = true
+	m.editOldName = "old"
+	m.addFocus = 4
+
+	m.addInputs[0].SetValue("API")
+	m.addInputs[1].SetValue("http")
+	m.addInputs[2].SetValue("https://api.example.com")
+	m.addInputs[3].SetValue("60")
+	m.addInputs[4].SetValue("not-a-code")
+
+	m2, _ := m.Update(key(tea.KeyEnter))
+	got := mustModel(t, m2)
+
+	if got.addErr == "" {
+		t.Error("expected error for invalid accepted statuses format")
+	}
+	if got.pendingEdit != nil {
+		t.Error("pendingEdit should not be set on validation error")
+	}
+}
+
+func TestSubmitTCPAcceptedStatusesIgnored(t *testing.T) {
+	// AcceptedStatuses is HTTP-only; for TCP it should be silently cleared
+	m := newTestModel()
+	m.view = viewAdd
+	m.editMode = true
+	m.editOldName = "old"
+	m.addFocus = 4
+
+	m.addInputs[0].SetValue("postgres")
+	m.addInputs[1].SetValue("tcp")
+	m.addInputs[2].SetValue("localhost:5432")
+	m.addInputs[3].SetValue("30")
+	m.addInputs[4].SetValue("200-299")
+
+	m2, _ := m.Update(key(tea.KeyEnter))
+	got := mustModel(t, m2)
+
+	if got.addErr != "" {
+		t.Errorf("unexpected error: %q", got.addErr)
+	}
+	if got.pendingEdit == nil {
+		t.Fatal("pendingEdit should be set")
+	}
+	if got.pendingEdit.AcceptedStatuses != "" {
+		t.Errorf("AcceptedStatuses should be empty for TCP, got %q", got.pendingEdit.AcceptedStatuses)
 	}
 }
 

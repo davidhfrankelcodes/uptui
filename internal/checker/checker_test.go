@@ -222,6 +222,103 @@ func TestCheckPortTypeAlias(t *testing.T) {
 	}
 }
 
+// ── Accepted statuses ─────────────────────────────────────────────────────────
+
+func TestCheckHTTPAcceptedStatuses401IsUp(t *testing.T) {
+	// 401 normally counts as down; with accepted_statuses="401" it should be up
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer ts.Close()
+
+	result := checker.Check(context.Background(), models.Monitor{
+		Type: models.HTTP, Target: ts.URL, Timeout: 5,
+		AcceptedStatuses: "401",
+	})
+	if result.Status != models.StatusUp {
+		t.Errorf("status = %q, want up (401 accepted); message: %s", result.Status, result.Message)
+	}
+}
+
+func TestCheckHTTPAcceptedStatusesDefaultBehavior(t *testing.T) {
+	// Without AcceptedStatuses set, 401 should still be down
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer ts.Close()
+
+	result := checker.Check(context.Background(), models.Monitor{
+		Type: models.HTTP, Target: ts.URL, Timeout: 5,
+	})
+	if result.Status != models.StatusDown {
+		t.Errorf("status = %q, want down (401 not accepted by default)", result.Status)
+	}
+}
+
+func TestCheckHTTPAcceptedStatusesRangeMatch(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	result := checker.Check(context.Background(), models.Monitor{
+		Type: models.HTTP, Target: ts.URL, Timeout: 5,
+		AcceptedStatuses: "200-299",
+	})
+	if result.Status != models.StatusUp {
+		t.Errorf("status = %q, want up (200 in 200-299)", result.Status)
+	}
+}
+
+func TestCheckHTTPAcceptedStatusesRangeNoMatch(t *testing.T) {
+	// 200 returned but only 301-399 accepted
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	result := checker.Check(context.Background(), models.Monitor{
+		Type: models.HTTP, Target: ts.URL, Timeout: 5,
+		AcceptedStatuses: "301-399",
+	})
+	if result.Status != models.StatusDown {
+		t.Errorf("status = %q, want down (200 not in 301-399)", result.Status)
+	}
+}
+
+func TestCheckHTTPAcceptedStatusesMultiple(t *testing.T) {
+	// Accept 200-299 and 401 and 403
+	codes := []struct {
+		code int
+		want models.Status
+	}{
+		{200, models.StatusUp},
+		{204, models.StatusUp},
+		{401, models.StatusUp},
+		{403, models.StatusUp},
+		{404, models.StatusDown},
+		{500, models.StatusDown},
+	}
+	for _, tt := range codes {
+		tt := tt
+		t.Run(http.StatusText(tt.code), func(t *testing.T) {
+			t.Parallel()
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tt.code)
+			}))
+			defer ts.Close()
+
+			result := checker.Check(context.Background(), models.Monitor{
+				Type: models.HTTP, Target: ts.URL, Timeout: 5,
+				AcceptedStatuses: "200-299,401,403",
+			})
+			if result.Status != tt.want {
+				t.Errorf("HTTP %d with accepted=200-299,401,403: got %q, want %q", tt.code, result.Status, tt.want)
+			}
+		})
+	}
+}
+
 func TestCheckUnknownType(t *testing.T) {
 	result := checker.Check(context.Background(), models.Monitor{
 		Type:    "icmp",

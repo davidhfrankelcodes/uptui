@@ -356,6 +356,71 @@ func TestSaveSettingsDefaultOmitsThemeKey(t *testing.T) {
 	}
 }
 
+func TestLoadAcceptedStatuses(t *testing.T) {
+	toml := `
+[[monitor]]
+name              = "Private API"
+type              = "http"
+target            = "https://api.example.com/health"
+accepted_statuses = "200-299,401"
+`
+	path := filepath.Join(t.TempDir(), "monitors.toml")
+	os.WriteFile(path, []byte(toml), 0644)
+
+	monitors, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(monitors) != 1 {
+		t.Fatalf("len = %d, want 1", len(monitors))
+	}
+	if monitors[0].AcceptedStatuses != "200-299,401" {
+		t.Errorf("AcceptedStatuses = %q, want %q", monitors[0].AcceptedStatuses, "200-299,401")
+	}
+}
+
+func TestSaveAcceptedStatusesRoundTrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "monitors.toml")
+	monitors := []models.Monitor{
+		{
+			Name:             "Private API",
+			Type:             models.HTTP,
+			Target:           "https://api.example.com/health",
+			Interval:         60,
+			Timeout:          30,
+			Active:           true,
+			AcceptedStatuses: "200-299,401",
+		},
+	}
+	if err := config.Save(path, monitors); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	loaded, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(loaded) != 1 {
+		t.Fatalf("len = %d, want 1", len(loaded))
+	}
+	if loaded[0].AcceptedStatuses != "200-299,401" {
+		t.Errorf("AcceptedStatuses = %q, want %q", loaded[0].AcceptedStatuses, "200-299,401")
+	}
+}
+
+func TestSaveAcceptedStatusesOmittedWhenEmpty(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "monitors.toml")
+	monitors := []models.Monitor{
+		{Name: "test", Type: models.HTTP, Target: "http://x.com", Interval: 60, Timeout: 30, Active: true},
+	}
+	if err := config.Save(path, monitors); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	b, _ := os.ReadFile(path)
+	if contains(string(b), "accepted_statuses") {
+		t.Error("empty AcceptedStatuses should be omitted from saved TOML")
+	}
+}
+
 func contains(s, sub string) bool {
 	return strings.Contains(s, sub)
 }

@@ -285,6 +285,11 @@ func runAdd(args []string) {
 			if i < len(args) {
 				fmt.Sscanf(args[i], "%d", &mon.Interval)
 			}
+		case "--accepted-statuses":
+			i++
+			if i < len(args) {
+				mon.AcceptedStatuses = args[i]
+			}
 		default:
 			remaining = append(remaining, args[i])
 		}
@@ -376,6 +381,11 @@ func runEdit(args []string) {
 			if i < len(args) {
 				fmt.Sscanf(args[i], "%d", &m.Timeout)
 			}
+		case "--accepted-statuses":
+			i++
+			if i < len(args) {
+				m.AcceptedStatuses = args[i]
+			}
 		}
 	}
 
@@ -429,8 +439,8 @@ Usage:
   uptui daemon             run daemon in foreground
   uptui stop               stop the background daemon
   uptui status             print monitor status to stdout
-  uptui add TARGET         add a monitor  [--name NAME] [--type http|tcp] [--interval N]
-  uptui edit NAME          edit a monitor [--name NEWNAME] [--target URL] [--type TYPE] [--interval N] [--timeout N]
+  uptui add TARGET         add a monitor  [--name NAME] [--type http|tcp] [--interval N] [--accepted-statuses CODES]
+  uptui edit NAME          edit a monitor [--name NEWNAME] [--target URL] [--type TYPE] [--interval N] [--timeout N] [--accepted-statuses CODES]
   uptui theme              show current theme and available themes
   uptui theme NAME         set theme (default, dracula, nord, solarized, monokai, gruvbox, monochrome)
 
