@@ -1,5 +1,6 @@
 services:
   daemon:
+    container_name: ${CONTAINER_NAME:-uptui-daemon}
     build: .
     restart: ${RESTART_POLICY:-unless-stopped}
     ports:
